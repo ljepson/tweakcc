@@ -111,8 +111,21 @@ export const applySystemPrompts = async (
       const interpolatedContent = getInterpolatedContent(match);
 
       // Check the delimiter character before the match to determine string type
+      // We look back to find the nearest quote or backtick that isn't escaped
       const matchIndex = match.index;
-      const delimiter = matchIndex > 0 ? content[matchIndex - 1] : '';
+      let delimiter = '';
+      let delimiterIndex = -1;
+      for (let i = matchIndex - 1; i >= 0 && i >= matchIndex - 20; i--) {
+        const char = content[i];
+        if (
+          (char === '"' || char === "'" || char === '`') &&
+          content[i - 1] !== '\\'
+        ) {
+          delimiter = char;
+          delimiterIndex = i;
+          break;
+        }
+      }
 
       // Only check for unescaped backticks if the original uses template literals
       // String literals (single/double quotes) don't need backticks escaped
@@ -156,9 +169,11 @@ export const applySystemPrompts = async (
       // If it's a string literal (double or single quote), convert actual newlines to \n
       // and escape the delimiter character. Template literals can have actual newlines.
       if (delimiter === '"') {
+        replacementContent = replacementContent.replace(/\r/g, '\\r');
         replacementContent = replacementContent.replace(/\n/g, '\\n');
         replacementContent = replacementContent.replace(/"/g, '\\"');
       } else if (delimiter === "'") {
+        replacementContent = replacementContent.replace(/\r/g, '\\r');
         replacementContent = replacementContent.replace(/\n/g, '\\n');
         replacementContent = replacementContent.replace(/'/g, "\\'");
       }

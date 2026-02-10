@@ -121,3 +121,37 @@ describe('functionName', () => {
 - Use `chalk` for terminal colors
 - Use `commander` for CLI argument parsing
 - Add shebang to index.tsx for executable support
+
+## User Config
+
+The user's config is at `~/.tweakcc/config.json` (symlink to `~/Projects/dotfiles/managed/tweakcc/config.json`, version-controlled on GitHub). An auto-commit/auto-push setup watches this file.
+
+### Config Overwrite Issue
+
+The TUI (interactive mode) can overwrite the user's custom config with defaults. When this happens, patches like Themes get skipped because the config matches defaults.
+
+**Symptoms**: Patches apply but customizations don't take effect (e.g., seeing 7 default themes instead of 2 custom ones: Dark mode + Catpuccin Mocha).
+
+**Diagnosis**: Check theme count in the config file:
+
+```bash
+node --input-type=module -e "
+import fs from 'fs';
+const c = JSON.parse(fs.readFileSync('$HOME/.tweakcc/config.json', 'utf8'));
+console.log('Themes:', c.settings.themes.length, c.settings.themes.map(t => t.name));
+"
+```
+
+If it shows 7 default themes instead of 2, the config was overwritten.
+
+**Fix**: Restore from git:
+
+```bash
+cd ~/Projects/dotfiles
+git log --oneline -10 -- managed/tweakcc/config.json  # find the good commit
+git checkout <good-commit> -- managed/tweakcc/config.json
+```
+
+Then re-apply: `node dist/index.mjs --apply`
+
+**Root cause**: `readConfigFile()` in `src/config.ts:265-269` saves config after normalization if anything changed. The TUI also writes defaults into the config. Combined with auto-commit, the overwritten config gets pushed.

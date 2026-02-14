@@ -68,6 +68,8 @@ import { writeTokenCountRounding } from './tokenCountRounding';
 import { writeAgentsMd } from './agentsMd';
 import { writeAutoAcceptPlanMode } from './autoAcceptPlanMode';
 import { writeAllowBypassPermsInSudo } from './allowBypassPermsInSudo';
+import { writeSuppressNativeInstallerWarning } from './suppressNativeInstallerWarning';
+import { writeScrollEscapeSequenceFilter } from './scrollEscapeSequenceFilter';
 import {
   restoreNativeBinaryFromBackup,
   restoreClijsFromBackup,
@@ -339,6 +341,19 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.MISC_CONFIGURABLE,
     description:
       'Allow bypassing permissions with --dangerously-skip-permissions even when running with root/sudo privileges',
+  },
+  {
+    id: 'suppress-native-installer-warning',
+    name: 'Suppress native installer warning',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description: 'Suppress the native installer warning message at startup',
+  },
+  {
+    id: 'filter-scroll-escape-sequences',
+    name: 'Filter scroll escape sequences',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description:
+      'Filter out terminal escape sequences that cause unwanted scrolling',
   },
   // Features
   {
@@ -629,7 +644,7 @@ export const applyCustomization = async (
       fn: c =>
         writePatchesAppliedIndication(
           c,
-          '3.4.0',
+          '4.0.0',
           legacyItems,
           showTweakccVersion,
           showPatchesApplied
@@ -757,6 +772,14 @@ export const applyCustomization = async (
     'allow-sudo-bypass-permissions': {
       fn: c => writeAllowBypassPermsInSudo(c),
       condition: !!config.settings.misc?.allowBypassPermissionsInSudo,
+    },
+    'suppress-native-installer-warning': {
+      fn: c => writeSuppressNativeInstallerWarning(c),
+      condition: !!config.settings.misc?.suppressNativeInstallerWarning,
+    },
+    'filter-scroll-escape-sequences': {
+      fn: c => writeScrollEscapeSequenceFilter(c),
+      condition: !!config.settings.misc?.filterScrollEscapeSequences,
     },
     // Features
     'swarm-mode': {

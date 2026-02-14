@@ -34,7 +34,12 @@ import {
   selectAndSaveInstallation,
 } from './installationDetection';
 import { InstallationPicker } from './ui/components/InstallationPicker';
-import { InstallationCandidate, StartupCheckInfo } from './types';
+import {
+  InstallationCandidate,
+  StartupCheckInfo,
+  TweakccConfig,
+} from './types';
+import { handleUnpack, handleRepack, handleAdhocPatch } from './commands';
 import {
   restoreClijsFromBackup,
   restoreNativeBinaryFromBackup,
@@ -153,7 +158,7 @@ const main = async () => {
     .description(
       'Command-line tool to customize your Claude Code theme colors, thinking verbs and more.'
     )
-    .version('3.4.0')
+    .version('4.0.0')
     .option('-d, --debug', 'enable debug mode')
     .option('-v, --verbose', 'enable verbose debug mode (includes diffs)')
     .option('--show-unchanged', 'show unchanged diffs (requires --verbose)')
@@ -175,76 +180,158 @@ const main = async () => {
     .option(
       '--config-url <url>',
       'fetch configuration from a URL instead of local config.json'
+    )
+    .action(async () => {
+      // This action handles the default case (no subcommand).
+      // All the --flag handling lives here so that Commander's subcommand
+      // support doesn't swallow the no-args invocation.
+      const options = program.opts();
+
+      if (options.verbose) {
+        enableVerbose();
+      } else if (options.debug) {
+        enableDebug();
+      }
+
+      if (options.showUnchanged) {
+        enableShowUnchanged();
+      }
+
+      // Migrate old ccInstallationDir config to ccInstallationPath if needed
+      const configMigrated = await migrateConfigIfNeeded();
+
+      // Check for conflicting flags
+      if (options.apply && (options.restore || options.revert)) {
+        console.error(
+          chalk.red(
+            'Error: Cannot use --apply and --restore/--revert together.'
+          )
+        );
+        process.exit(1);
+      }
+
+      // Handle --list-patches flag
+      if (options.listPatches) {
+        handleListPatches();
+        return;
+      }
+
+      // Handle --list-system-prompts flag
+      if (options.listSystemPrompts !== undefined) {
+        await handleListSystemPrompts(
+          options.listSystemPrompts as string | true
+        );
+        return;
+      }
+
+      // Handle --apply flag for non-interactive mode
+      if (options.apply) {
+        // Parse patch filter if provided
+        const patchFilter = options.patches
+          ? (options.patches as string)
+              .split(',')
+              .map((id: string) => id.trim())
+          : null;
+        await handleApplyMode(patchFilter, options.configUrl);
+        return;
+      }
+
+      // --config-url is only valid with --apply
+      if (options.configUrl) {
+        console.error(
+          chalk.red('Error: --config-url can only be used with --apply.')
+        );
+        console.error(
+          chalk.gray(
+            'The interactive TUI is for editing local configuration only.'
+          )
+        );
+        console.error(chalk.gray('To apply a remote config, use:'));
+        console.error(
+          chalk.gray(`  ${getInvocationCommand()} --apply --config-url <url>`)
+        );
+        process.exit(1);
+      }
+
+      // Handle --restore or --revert flags for non-interactive mode
+      if (options.restore || options.revert) {
+        await handleRestoreMode();
+        return;
+      }
+
+      // Interactive mode
+      await handleInteractiveMode(configMigrated);
+    });
+
+  // =========================================================================
+  // Subcommands
+  // =========================================================================
+
+  program
+    .command('unpack')
+    .argument('<output-js-path>', 'path to write extracted JS')
+    .argument('[binary-path]', 'path to native binary (default: auto-detect)')
+    .description('Extract JS from a native Claude Code binary')
+    .action(async (outputJsPath: string, binaryPath?: string) => {
+      await handleUnpack(outputJsPath, binaryPath);
+      process.exit(0);
+    });
+
+  program
+    .command('repack')
+    .argument('<input-js-path>', 'path to JS file to embed')
+    .argument('[binary-path]', 'path to native binary (default: auto-detect)')
+    .description('Embed JS into a native Claude Code binary')
+    .action(async (inputJsPath: string, binaryPath?: string) => {
+      await handleRepack(inputJsPath, binaryPath);
+      process.exit(0);
+    });
+
+  program
+    .command('adhoc-patch')
+    .description('Apply an ad-hoc patch to Claude Code')
+    .option(
+      '-s, --string <values...>',
+      'replace string: <old-string> <new-string>'
+    )
+    .option('-r, --regex <values...>', 'replace regex: <pattern> <replacement>')
+    .option(
+      '--script <script>',
+      'run a patch script (prefix with @ for file/URL)'
+    )
+    .option(
+      '-i, --index <number>',
+      'replace only the Nth occurrence (1-based)',
+      parseInt
+    )
+    .option(
+      '-p, --path <path>',
+      'path to cli.js or native binary (default: auto-detect)'
+    )
+    .option(
+      '--confirm-possible-dangerous-patch',
+      'skip diff preview and apply immediately'
+    )
+    .option(
+      '--dangerous-no-script-sandbox',
+      'run --script without the Node.js permission sandbox (use if Node < 20)'
+    )
+    .action(
+      async (options: {
+        string?: string[];
+        regex?: string[];
+        script?: string;
+        index?: number;
+        path?: string;
+        confirmPossibleDangerousPatch?: boolean;
+        dangerousNoScriptSandbox?: boolean;
+      }) => {
+        await handleAdhocPatch(options);
+        process.exit(0);
+      }
     );
+
   program.parse();
-  const options = program.opts();
-
-  if (options.verbose) {
-    enableVerbose();
-  } else if (options.debug) {
-    enableDebug();
-  }
-
-  if (options.showUnchanged) {
-    enableShowUnchanged();
-  }
-
-  // Migrate old ccInstallationDir config to ccInstallationPath if needed
-  const configMigrated = await migrateConfigIfNeeded();
-
-  // Check for conflicting flags
-  if (options.apply && (options.restore || options.revert)) {
-    console.error(
-      chalk.red('Error: Cannot use --apply and --restore/--revert together.')
-    );
-    process.exit(1);
-  }
-
-  // Handle --list-patches flag
-  if (options.listPatches) {
-    handleListPatches();
-    return;
-  }
-
-  // Handle --list-system-prompts flag
-  if (options.listSystemPrompts !== undefined) {
-    await handleListSystemPrompts(options.listSystemPrompts as string | true);
-    return;
-  }
-
-  // Handle --apply flag for non-interactive mode
-  if (options.apply) {
-    // Parse patch filter if provided
-    const patchFilter = options.patches
-      ? (options.patches as string).split(',').map((id: string) => id.trim())
-      : null;
-    await handleApplyMode(patchFilter, options.configUrl);
-    return;
-  }
-
-  // --config-url is only valid with --apply
-  if (options.configUrl) {
-    console.error(
-      chalk.red('Error: --config-url can only be used with --apply.')
-    );
-    console.error(
-      chalk.gray('The interactive TUI is for editing local configuration only.')
-    );
-    console.error(chalk.gray('To apply a remote config, use:'));
-    console.error(
-      chalk.gray(`  ${getInvocationCommand()} --apply --config-url <url>`)
-    );
-    process.exit(1);
-  }
-
-  // Handle --restore or --revert flags for non-interactive mode
-  if (options.restore || options.revert) {
-    await handleRestoreMode();
-    return;
-  }
-
-  // Interactive mode
-  await handleInteractiveMode(configMigrated);
 };
 
 /**
@@ -632,7 +719,6 @@ async function handleInteractiveMode(configMigrated: boolean): Promise<void> {
   try {
     const result = await startupCheck({ interactive: true });
 
-    // Check if we need user to select from multiple candidates
     if (result.pendingCandidates) {
       await handleInstallationSelection(
         result.pendingCandidates,
@@ -641,14 +727,12 @@ async function handleInteractiveMode(configMigrated: boolean): Promise<void> {
       return;
     }
 
-    // Check if we found an installation
     if (!result.startupCheckInfo) {
       console.error(chalk.red(formatNotFoundError()));
       process.exit(1);
     }
 
-    // We have a valid installation, start the app
-    await startApp(result.startupCheckInfo, configMigrated);
+    await startApp(result.startupCheckInfo, configMigrated, result.config);
   } catch (error) {
     if (error instanceof InstallationDetectionError) {
       console.error(chalk.red(`Error: ${error.message}`));
@@ -671,10 +755,8 @@ async function handleInstallationSelection(
   return new Promise((resolve, reject) => {
     const handleSelect = async (candidate: InstallationCandidate) => {
       try {
-        // Save the selection and get the installation info
         const ccInstInfo = await selectAndSaveInstallation(candidate);
 
-        // Complete the startup check with the selected installation
         const config = await readConfigFile();
         const startupCheckInfo = await completeStartupCheck(config, ccInstInfo);
 
@@ -687,11 +769,9 @@ async function handleInstallationSelection(
           process.exit(1);
         }
 
-        // Clear the picker and start the main app
-        // We need to unmount the picker first
         pickerInstance.unmount();
 
-        await startApp(startupCheckInfo, configMigrated);
+        await startApp(startupCheckInfo, configMigrated, config);
         resolve();
       } catch (error) {
         reject(error);
@@ -704,18 +784,11 @@ async function handleInstallationSelection(
   });
 }
 
-/**
- * Starts the main app with the given startup info.
- * The TUI always uses local configuration only.
- *
- * @param startupCheckInfo - Startup check result
- * @param configMigrated - Whether the config was migrated
- */
 async function startApp(
   startupCheckInfo: StartupCheckInfo,
-  configMigrated: boolean
+  configMigrated: boolean,
+  initialConfig: TweakccConfig
 ): Promise<void> {
-  // Preload strings file for system prompts (for interactive mode)
   const result = await preloadStringsFile(startupCheckInfo.ccInstInfo.version);
   if (!result.success) {
     console.log(chalk.red('\n✖ Error downloading system prompts:'));
@@ -734,6 +807,7 @@ async function startApp(
       startupCheckInfo={startupCheckInfo}
       configMigrated={configMigrated}
       invocationCommand={invocationCommand}
+      initialConfig={initialConfig}
     />
   );
 }

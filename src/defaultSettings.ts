@@ -710,6 +710,8 @@ export const DEFAULT_SETTINGS: Settings = {
     tokenCountRounding: null,
     autoAcceptPlanMode: false,
     allowBypassPermissionsInSudo: false,
+    suppressNativeInstallerWarning: false,
+    filterScrollEscapeSequences: false,
   },
   toolsets: [],
   defaultToolset: null,

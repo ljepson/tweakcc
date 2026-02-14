@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v4.0.0](https://github.com/Piebald-AI/tweakcc/releases/tag/v4.0.0) - 2026-02-09
+
+- Add a patch to filter out escape sequences that cause unwanted terminal scrolling (#496) - @brrock
 - Add comprehensive documentation for thinking verbs and thinking indicator customizations
 - Add contributing guidelines and AGENTS.md for developer experience
 - Add a fallback for WASMagic when it's not available (#399) - @signadou
@@ -33,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix ALL the patching errors for 2.1.31 (#466) - @bl-ue
 - Add CLI spinners (#470) - @bl-ue
 - Add support for dangerously bypassing permissions in sudo with new setting and patch (#478) - @brrock
+- Add `unpack`, `repack`, and `adhoc-patch --string/regex/script` subcommands (#481)
+- Offer to set edited theme as Claude Code's current theme when exiting editor (#482) - @brrock
+- Add a patch to suppress the native installer warning (#483) - @brrock
+- Show lightning fast formatted patch changes via oxfmt before applying patch scripts (#489) - @bl-ue
+- Fix native installation support for newer CC versions (#492) - @signadou
+- Fix 2 config file saves on TUI startup (#494) - @bl-ue
+- Fix 2.1.37 patching errors in native JS (#497) - @bl-ue
 
 ## [v3.4.0](https://github.com/Piebald-AI/tweakcc/releases/tag/v3.4.0) - 2026-01-18
 

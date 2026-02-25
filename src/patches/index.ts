@@ -52,6 +52,7 @@ import { writeFixLspSupport } from './fixLspSupport';
 import { writeToolsets } from './toolsets';
 import { writeTableFormat } from './tableFormat';
 import { writeConversationTitle } from './conversationTitle';
+import { writeDisableBetaHeaders } from './disableBetaHeaders';
 import { writeHideStartupBanner } from './hideStartupBanner';
 import { writeHideCtrlGToEdit } from './hideCtrlGToEdit';
 import { writeHideStartupClawd } from './hideStartupClawd';
@@ -399,6 +400,13 @@ const PATCH_DEFINITIONS = [
     name: 'Input pattern highlighters',
     group: PatchGroup.FEATURES,
     description: 'Custom input highlighters will be registered',
+  },
+  {
+    id: 'disable-beta-headers',
+    name: 'Disable beta headers',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description:
+      'Disable "anthropic-beta" headers (like prompt-caching) for cleaner API requests',
   },
   {
     id: 'conversation-title',
@@ -838,6 +846,10 @@ export const applyCustomization = async (
         config.settings.inputPatternHighlighters &&
         config.settings.inputPatternHighlighters.length > 0
       ),
+    },
+    'disable-beta-headers': {
+      fn: c => writeDisableBetaHeaders(c),
+      condition: !!config.settings.misc?.disableBetaHeaders,
     },
     'conversation-title': {
       fn: c => writeConversationTitle(c),

@@ -79,6 +79,7 @@ export function MiscView({ onSubmit }: MiscViewProps) {
     suppressNativeInstallerWarning: false,
     filterScrollEscapeSequences: false,
     enableWorktreeMode: true,
+    disableBetaHeaders: false,
     enableContextLimitOverride: false,
     enableModelCustomizations: true,
   };
@@ -595,6 +596,20 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.filterScrollEscapeSequences =
               !settings.misc!.filterScrollEscapeSequences;
+          });
+        },
+      },
+      {
+        id: 'disableBetaHeaders',
+        title: 'Disable beta headers',
+        description:
+          'Disable "anthropic-beta" headers (like prompt-caching) for cleaner API requests.',
+        getValue: () => settings.misc?.disableBetaHeaders ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.disableBetaHeaders =
+              !settings.misc!.disableBetaHeaders;
           });
         },
       },

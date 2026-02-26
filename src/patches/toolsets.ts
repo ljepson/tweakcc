@@ -563,7 +563,7 @@ export const appendToolsetToModeDisplay = (oldFile: string): string | null => {
   // Looking for: tl(Y).toLowerCase(), " on"
   // We want to change it to: tl(Y).toLowerCase(), " on: ", currentToolset || "undefined"
 
-  const modeDisplayPattern = /([$\w]+)\((\w+)\)\.toLowerCase\(\)," on"/;
+  const modeDisplayPattern = /([$\w]+)\(([$\w]+)\)\.toLowerCase\(\)," on"/;
   const match = oldFile.match(modeDisplayPattern);
 
   if (!match || match.index === undefined) {

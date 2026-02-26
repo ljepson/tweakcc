@@ -1,50 +1,35 @@
 // Please see the note about writing patches in ./index
 
-import { globalReplace } from './index';
-
 /**
- * Disables "anthropic-beta" headers in Claude Code.
- *
- * It targets several patterns:
- * 1. betas: [...] -> Replace with empty array if CC_DISABLE_BETAS is set
- * 2. "anthropic-beta": -> Replace with computed property if CC_DISABLE_BETAS is set
- * 3. ["anthropic-beta"] -> Replace with computed property if CC_DISABLE_BETAS is set
- * 4. Specific beta strings like "oauth-2025-04-20"
+ * Disables or customizes "anthropic-beta" headers in Claude Code.
  */
 export const writeDisableBetaHeaders = (oldFile: string): string | null => {
-  // Pattern 1: betas:[...] or betas: [...]
-  // We replace it to respect an environment variable CC_DISABLE_BETAS.
-  // If the env var is set, we return an empty array, effectively disabling the headers.
-  let content = globalReplace(
-    oldFile,
-    /betas:\s*\[/g,
-    'betas:process.env.CC_DISABLE_BETAS?[]:['
-  );
+  let content = oldFile;
 
-  // Pattern 2: "anthropic-beta" as a key in an object literal: {"anthropic-beta": ...}
-  // We convert it to a computed property: {[process.env.CC_DISABLE_BETAS?"data-disabled-beta":"anthropic-beta"]: ...}
-  // This is safe for object literals and preserves syntax.
-  content = globalReplace(
-    content,
+  // 1. Target the dQ function which provides the central list of betas for message requests.
+  // Minified version: function dQ(){return k$.sdkBetas}
+  const dQPattern = /function dQ\(\)\{return\s+([$\w.]+)\.sdkBetas\}/;
+  const dQMatch = content.match(dQPattern);
+  if (dQMatch) {
+    const kVar = dQMatch[1];
+    // Comprehensive logic for dQ
+    const newFunc = `function dQ(){let o=${kVar}.sdkBetas||[];if(process.env.CLAUDE_CODE_DISABLE_BETAS==="1"){o=o.filter(function(b){return b&&typeof b==="string"&&(b.indexOf("oauth")!==-1||b.indexOf("mcp-servers")!==-1)})}if(process.env.CLAUDE_CODE_ADD_BETAS){let a=process.env.CLAUDE_CODE_ADD_BETAS.split(",");for(let i=0;i<a.length;i++){let x=a[i].trim();if(x&&o.indexOf(x)===-1)o.push(x)}}return o}`;
+    content = content.replace(dQPattern, newFunc);
+  }
+
+  // 2. Target "anthropic-beta" as a key in object literals (headers)
+  // We use a safe computed property name.
+  content = content.replace(
     /"anthropic-beta":/g,
-    '[process.env.CC_DISABLE_BETAS?"data-disabled-beta":"anthropic-beta"]:'
+    '[process.env.CLAUDE_CODE_DISABLE_BETAS==="1"?"x-disabled-beta":"anthropic-beta"]:'
   );
 
-  // Pattern 3: "anthropic-beta" as a property access key: obj["anthropic-beta"]
-  // We convert it to: obj[process.env.CC_DISABLE_BETAS?"data-disabled-beta":"anthropic-beta"]
-  content = globalReplace(
-    content,
-    /\["anthropic-beta"\]/g,
-    '[process.env.CC_DISABLE_BETAS?"data-disabled-beta":"anthropic-beta"]'
-  );
-
-  // Pattern 4: Specific beta header strings.
-  // If the string itself is hardcoded and used in a way that Pattern 1/2/3 missed.
-  content = globalReplace(
-    content,
-    /"oauth-2025-04-20"/g,
-    'process.env.CC_DISABLE_BETAS?"disabled":"oauth-2025-04-20"'
-  );
+  if (content === oldFile) {
+    if (oldFile.includes('CLAUDE_CODE_DISABLE_BETAS')) {
+      return oldFile;
+    }
+    return null;
+  }
 
   return content;
 };

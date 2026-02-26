@@ -603,7 +603,7 @@ export function MiscView({ onSubmit }: MiscViewProps) {
         id: 'disableBetaHeaders',
         title: 'Disable beta headers',
         description:
-          'Disable "anthropic-beta" headers (like prompt-caching) for cleaner API requests.',
+          'Disable "anthropic-beta" headers for cleaner API requests (CLAUDE_CODE_DISABLE_BETAS=1) or add specific ones (CLAUDE_CODE_ADD_BETAS=mcp-servers-...).',
         getValue: () => settings.misc?.disableBetaHeaders ?? false,
         toggle: () => {
           updateSettings(settings => {

@@ -11,6 +11,8 @@ const getOpenDocumentLocation = (oldFile: string): LocationResult | null => {
     return null;
   }
 
+  const ensureServerStartedVar = ensureMatch[1];
+
   // Step 2: Get a window around the match
   const windowStart = Math.max(0, ensureMatch.index - 50);
   const windowEnd = Math.min(oldFile.length, ensureMatch.index + 50);
@@ -52,10 +54,12 @@ const getOpenDocumentLocation = (oldFile: string): LocationResult | null => {
   // Step 7: Store the matched param name as `documentPathVar`
   const documentPathVar = lastMatch[1];
 
-  // Step ii.1: Match the 2nd line of sendRequest `let ([$\w]+)=await [$\w]+\([$\w]+\);`
+  // Step ii.1: Match the 2nd line of sendRequest `(let|var) ([$\w]+)=await [$\w]+\([$\w]+\);`
   const functionStart = searchStart + lastMatch.index;
   const functionBody = oldFile.slice(functionStart, ensureMatch.index);
-  const secondLinePattern = /let ([$\w]+)=await [$\w]+\([$\w]+\);/;
+  const secondLinePattern = new RegExp(
+    `(?:let|var) ([$\\w]+)=await ${escapeIdent(ensureServerStartedVar)}\\(([$\\w]+)\\);`
+  );
   const secondLineMatch = functionBody.match(secondLinePattern);
   if (!secondLineMatch || secondLineMatch.index === undefined) {
     console.error(

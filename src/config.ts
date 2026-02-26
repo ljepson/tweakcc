@@ -80,6 +80,7 @@ export const NATIVE_BINARY_BACKUP_FILE = path.join(
   CONFIG_DIR,
   'native-binary.backup'
 );
+
 export const SYSTEM_PROMPTS_DIR = path.join(CONFIG_DIR, 'system-prompts');
 export const PROMPT_CACHE_DIR = path.join(CONFIG_DIR, 'prompt-data-cache');
 

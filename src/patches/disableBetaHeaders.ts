@@ -6,15 +6,16 @@
 export const writeDisableBetaHeaders = (oldFile: string): string | null => {
   let content = oldFile;
 
-  // 1. Target the dQ function which provides the central list of betas for message requests.
-  // Minified version: function dQ(){return k$.sdkBetas}
-  const dQPattern = /function dQ\(\)\{return\s+([$\w.]+)\.sdkBetas\}/;
-  const dQMatch = content.match(dQPattern);
-  if (dQMatch) {
-    const kVar = dQMatch[1];
-    // Comprehensive logic for dQ
-    const newFunc = `function dQ(){let o=${kVar}.sdkBetas||[];if(process.env.CLAUDE_CODE_DISABLE_BETAS==="1"){o=o.filter(function(b){return b&&typeof b==="string"&&(b.indexOf("oauth")!==-1||b.indexOf("mcp-servers")!==-1)})}if(process.env.CLAUDE_CODE_ADD_BETAS){let a=process.env.CLAUDE_CODE_ADD_BETAS.split(",");for(let i=0;i<a.length;i++){let x=a[i].trim();if(x&&o.indexOf(x)===-1)o.push(x)}}return o}`;
-    content = content.replace(dQPattern, newFunc);
+  // 1. Target the sdkBetas getter function (e.g. function dQ(){return k$.sdkBetas}
+  // or function kX(){return S$.sdkBetas}). The function name changes across versions.
+  const betaGetterPattern =
+    /function ([$\w]+)\(\)\{return\s+([$\w.]+)\.sdkBetas\}/;
+  const betaGetterMatch = content.match(betaGetterPattern);
+  if (betaGetterMatch) {
+    const fnName = betaGetterMatch[1];
+    const stateVar = betaGetterMatch[2];
+    const newFunc = `function ${fnName}(){let o=${stateVar}.sdkBetas||[];if(process.env.CLAUDE_CODE_DISABLE_BETAS==="1"){o=o.filter(function(b){return b&&typeof b==="string"&&(b.indexOf("oauth")!==-1||b.indexOf("mcp-servers")!==-1)})}if(process.env.CLAUDE_CODE_ADD_BETAS){let a=process.env.CLAUDE_CODE_ADD_BETAS.split(",");for(let i=0;i<a.length;i++){let x=a[i].trim();if(x&&o.indexOf(x)===-1)o.push(x)}}return o}`;
+    content = content.replace(betaGetterPattern, newFunc);
   }
 
   // 2. Target "anthropic-beta" as a key in object literals (headers)

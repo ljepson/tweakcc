@@ -726,14 +726,26 @@ function rebuildBunData(
 
     // Check if this is claude.js and we have modified contents
     let contentsBytes: Buffer;
+    let bytecodeBytes: Buffer;
     if (modifiedClaudeJs && isClaudeModule(moduleName)) {
-      contentsBytes = modifiedClaudeJs;
+      // Strip @bytecode tag so Bun parses JS source instead of stale bytecode
+      const header = modifiedClaudeJs.subarray(0, 64).toString('utf8');
+      if (header.includes('@bytecode')) {
+        const str = modifiedClaudeJs.toString('utf8');
+        contentsBytes = Buffer.from(
+          str.replace(/\/\/ @bun @bytecode (@bun-cjs)/, '// @bun $1')
+        );
+      } else {
+        contentsBytes = modifiedClaudeJs;
+      }
+      // Zero out bytecode since it no longer matches the patched source
+      bytecodeBytes = Buffer.alloc(0);
     } else {
       contentsBytes = getStringPointerContent(bunData, module.contents);
+      bytecodeBytes = getStringPointerContent(bunData, module.bytecode);
     }
 
     const sourcemapBytes = getStringPointerContent(bunData, module.sourcemap);
-    const bytecodeBytes = getStringPointerContent(bunData, module.bytecode);
     const moduleInfoBytes = getStringPointerContent(bunData, module.moduleInfo);
     const bytecodeOriginPathBytes = getStringPointerContent(
       bunData,

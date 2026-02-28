@@ -65,6 +65,20 @@ export const writeDisableBetaHeaders = (oldFile: string): string | null => {
     content = content.replace(betaGetterPattern, newFunc);
   }
 
+  // 3. Strip ?beta=true from API URL paths. The Anthropic SDK appends this
+  // query param to signal beta endpoints. Proxies like LiteLLM can't parse
+  // these URLs. We make it conditional on the same env var.
+  // String literals: "/v1/foo?beta=true" → "/v1/foo" + conditional
+  content = content.replace(
+    /"(\/v1\/[^"]+)\?beta=true"/g,
+    '"$1"+(process.env.CLAUDE_CODE_DISABLE_BETAS==="1"?"":"?beta=true")'
+  );
+  // Template literals: ?beta=true` → ${conditional}`
+  content = content.replace(
+    /\?beta=true`/g,
+    '${process.env.CLAUDE_CODE_DISABLE_BETAS==="1"?"":"?beta=true"}`'
+  );
+
   if (content === oldFile) {
     if (oldFile.includes('CLAUDE_CODE_DISABLE_BETAS')) {
       return oldFile;

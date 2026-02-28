@@ -5,7 +5,13 @@
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import LIEF from 'node-lief';
-import { isDebug, debug } from './utils';
+import {
+  isDebug,
+  debug,
+  hasImmutableFlag,
+  clearImmutableFlag,
+  setImmutableFlag,
+} from './utils';
 
 // ============================================================================
 // Nix binary wrapper detection
@@ -957,6 +963,11 @@ function atomicWriteBinary(
     fs.chmodSync(tempPath, origStat.mode);
   }
 
+  const wasImmutable = hasImmutableFlag(outputPath);
+  if (wasImmutable) {
+    clearImmutableFlag(outputPath);
+  }
+
   try {
     fs.renameSync(tempPath, outputPath);
   } catch (error) {
@@ -984,6 +995,10 @@ function atomicWriteBinary(
     }
 
     throw error;
+  }
+
+  if (wasImmutable) {
+    setImmutableFlag(outputPath);
   }
 }
 
@@ -1158,21 +1173,74 @@ function repackELF(
   outputPath: string
 ): void {
   try {
+    // CRITICAL: Do NOT use LIEF's binary.write() for ELF binaries.
+    // LIEF rewrites the entire ELF from scratch, modifying .dynsym and other
+    // sections in ways that break Bun's embedded module loader. Instead,
+    // directly splice the new overlay onto the original ELF using raw I/O.
+    // The overlay starts immediately after the last ELF content.
+    const originalSize = fs.statSync(binPath).size;
+    const originalOverlaySize = elfBinary.overlay.length;
+    const overlayStart = originalSize - originalOverlaySize;
+
     // Build new overlay: [bunData][totalByteCount (8 bytes)]
-    // Note: newBunBuffer already includes offsets and trailer
+    // Note: newBunBuffer already includes offsets and trailer.
+    // The tail u64 must be the total file size (ELF + overlay), matching
+    // the original binary's convention used by Bun at runtime.
     const newOverlay = Buffer.allocUnsafe(newBunBuffer.length + 8);
     newBunBuffer.copy(newOverlay, 0);
-    newOverlay.writeBigUInt64LE(
-      BigInt(newBunBuffer.length),
-      newBunBuffer.length
-    );
+    const newTotalFileSize = BigInt(overlayStart + newOverlay.length);
+    newOverlay.writeBigUInt64LE(newTotalFileSize, newBunBuffer.length);
 
     debug(`repackELF: Setting overlay data (${newOverlay.length} bytes)`);
 
-    elfBinary.overlay = newOverlay;
-    debug(`repackELF: Writing modified binary to ${outputPath}...`);
+    debug(
+      `repackELF: Original file size=${originalSize}, overlay size=${originalOverlaySize}, overlay starts at=${overlayStart}`
+    );
 
-    atomicWriteBinary(elfBinary, outputPath, binPath);
+    // Copy original ELF (everything before the overlay) + append new overlay
+    const tempPath = outputPath + '.tmp';
+    fs.copyFileSync(binPath, tempPath);
+    fs.chmodSync(tempPath, 0o755);
+    fs.truncateSync(tempPath, overlayStart);
+    fs.appendFileSync(tempPath, newOverlay);
+
+    // Copy permissions from original
+    const origStat = fs.statSync(binPath);
+    fs.chmodSync(tempPath, origStat.mode);
+
+    // Atomic rename
+    const wasImmutable = hasImmutableFlag(outputPath);
+    if (wasImmutable) {
+      clearImmutableFlag(outputPath);
+    }
+
+    try {
+      fs.renameSync(tempPath, outputPath);
+    } catch (error) {
+      try {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        (error.code === 'ETXTBSY' ||
+          error.code === 'EBUSY' ||
+          error.code === 'EPERM')
+      ) {
+        throw new Error(
+          'Cannot update the Claude executable while it is running.\n' +
+            'Please close all Claude instances and try again.'
+        );
+      }
+      throw error;
+    }
+
+    if (wasImmutable) {
+      setImmutableFlag(outputPath);
+    }
+
     debug('repackELF: Write completed successfully');
   } catch (error) {
     console.error('repackELF failed:', error);

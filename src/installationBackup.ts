@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 
 import {
   CLIJS_BACKUP_FILE,
@@ -42,6 +43,8 @@ export const backupNativeBinary = async (
     ccInstInfo.nativeInstallationPath,
     NATIVE_BINARY_BACKUP_FILE
   );
+  const sourceMode = fsSync.statSync(ccInstInfo.nativeInstallationPath).mode;
+  fsSync.chmodSync(NATIVE_BINARY_BACKUP_FILE, sourceMode | 0o111);
   await updateConfigFile(config => {
     config.changesApplied = false;
     config.ccVersion = ccInstInfo.version;
@@ -116,7 +119,8 @@ export const restoreNativeBinaryFromBackup = async (
   await replaceFileBreakingHardLinks(
     ccInstInfo.nativeInstallationPath,
     backupContent,
-    'restore'
+    'restore',
+    true
   );
 
   return true;

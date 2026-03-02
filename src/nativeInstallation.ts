@@ -203,6 +203,10 @@ interface BunData {
   moduleStructSize: number;
 }
 
+function executableMode(mode: number): number {
+  return mode | 0o111;
+}
+
 /**
  * Read a StringPointer slice from given buffer.
  */
@@ -960,12 +964,24 @@ function atomicWriteBinary(
 
   if (copyPermissions) {
     const origStat = fs.statSync(originalPath);
-    fs.chmodSync(tempPath, origStat.mode);
+    fs.chmodSync(tempPath, executableMode(origStat.mode));
   }
 
   const wasImmutable = hasImmutableFlag(outputPath);
   if (wasImmutable) {
-    clearImmutableFlag(outputPath);
+    const cleared = clearImmutableFlag(outputPath);
+    if (!cleared) {
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch {
+        // Do nothing
+      }
+      throw new Error(
+        `Cannot modify immutable file: ${outputPath}. Run: sudo chattr -i ${JSON.stringify(outputPath)}`
+      );
+    }
   }
 
   try {
@@ -1206,12 +1222,22 @@ function repackELF(
 
     // Copy permissions from original
     const origStat = fs.statSync(binPath);
-    fs.chmodSync(tempPath, origStat.mode);
+    fs.chmodSync(tempPath, executableMode(origStat.mode));
 
     // Atomic rename
     const wasImmutable = hasImmutableFlag(outputPath);
     if (wasImmutable) {
-      clearImmutableFlag(outputPath);
+      const cleared = clearImmutableFlag(outputPath);
+      if (!cleared) {
+        try {
+          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        } catch {
+          // Do nothing
+        }
+        throw new Error(
+          `Cannot modify immutable file: ${outputPath}. Run: sudo chattr -i ${JSON.stringify(outputPath)}`
+        );
+      }
     }
 
     try {

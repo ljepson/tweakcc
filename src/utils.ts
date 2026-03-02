@@ -385,7 +385,8 @@ export const buildChalkChain = (
 export async function replaceFileBreakingHardLinks(
   filePath: string,
   newContent: string | Buffer,
-  operation: string = 'replace'
+  operation: string = 'replace',
+  forceExecutable: boolean = false
 ): Promise<void> {
   // Get the original file's permissions before unlinking
   let originalMode = 0o755; // Default fallback
@@ -404,7 +405,12 @@ export async function replaceFileBreakingHardLinks(
 
   const wasImmutable = hasImmutableFlag(filePath);
   if (wasImmutable) {
-    clearImmutableFlag(filePath);
+    const cleared = clearImmutableFlag(filePath);
+    if (!cleared) {
+      throw new Error(
+        `Cannot modify immutable file: ${filePath}. Run: sudo chattr -i ${JSON.stringify(filePath)}`
+      );
+    }
   }
 
   // Unlink the file first to break any hard links
@@ -420,9 +426,10 @@ export async function replaceFileBreakingHardLinks(
   await fs.writeFile(filePath, newContent);
 
   // Restore the original permissions
-  await fs.chmod(filePath, originalMode);
+  const targetMode = forceExecutable ? originalMode | 0o111 : originalMode;
+  await fs.chmod(filePath, targetMode);
   debug(
-    `[${operation}] Restored permissions to ${(originalMode & parseInt('777', 8)).toString(8)}`
+    `[${operation}] Restored permissions to ${(targetMode & parseInt('777', 8)).toString(8)}`
   );
 
   if (wasImmutable) {

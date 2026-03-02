@@ -28,6 +28,93 @@ export interface HashIndex {
   [key: string]: string;
 }
 
+const recoverTopLevelJsonObject = (content: string): string | null => {
+  const start = content.indexOf('{');
+  if (start < 0) {
+    return null;
+  }
+
+  let inString = false;
+  let escaping = false;
+  let depth = 0;
+  let lastCompleteObjectEnd = -1;
+
+  for (let i = start; i < content.length; i++) {
+    const char = content[i];
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaping = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === '{') {
+      depth++;
+      continue;
+    }
+
+    if (char === '}') {
+      depth--;
+      if (depth === 0) {
+        lastCompleteObjectEnd = i;
+      }
+      continue;
+    }
+  }
+
+  if (lastCompleteObjectEnd === -1) {
+    return null;
+  }
+
+  return content.slice(start, lastCompleteObjectEnd + 1);
+};
+
+const readJsonObjectWithRecovery = async <T extends Record<string, unknown>>(
+  filePath: string
+): Promise<T> => {
+  const content = await fs.readFile(filePath, 'utf8');
+
+  try {
+    return JSON.parse(content) as T;
+  } catch (parseError) {
+    const recoveredJson = recoverTopLevelJsonObject(content);
+    if (!recoveredJson) {
+      throw parseError;
+    }
+
+    const recovered = JSON.parse(recoveredJson) as T;
+    const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+    await fs.writeFile(tmpPath, JSON.stringify(recovered, null, 2), 'utf8');
+    await fs.rename(tmpPath, filePath);
+    return recovered;
+  }
+};
+
+const writeJsonObjectAtomic = async (
+  filePath: string,
+  obj: Record<string, unknown>
+): Promise<void> => {
+  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await fs.writeFile(tmpPath, JSON.stringify(obj, null, 2), 'utf8');
+  await fs.rename(tmpPath, filePath);
+};
+
 /**
  * Generates a hash key for a prompt
  * Format: "{promptId}-{version}"
@@ -48,8 +135,7 @@ export const computeMD5Hash = (content: string): string => {
  */
 export const readHashIndex = async (): Promise<HashIndex> => {
   try {
-    const content = await fs.readFile(getHashIndexPath(), 'utf8');
-    return JSON.parse(content);
+    return await readJsonObjectWithRecovery<HashIndex>(getHashIndexPath());
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return {};
@@ -72,11 +158,7 @@ export const writeHashIndex = async (index: HashIndex): Promise<void> => {
     sortedIndex[key] = index[key];
   }
 
-  await fs.writeFile(
-    getHashIndexPath(),
-    JSON.stringify(sortedIndex, null, 2),
-    'utf8'
-  );
+  await writeJsonObjectAtomic(getHashIndexPath(), sortedIndex);
 };
 
 /**
@@ -169,8 +251,9 @@ export interface AppliedHashIndex {
  */
 export const readAppliedHashIndex = async (): Promise<AppliedHashIndex> => {
   try {
-    const content = await fs.readFile(getAppliedHashesPath(), 'utf8');
-    return JSON.parse(content);
+    return await readJsonObjectWithRecovery<AppliedHashIndex>(
+      getAppliedHashesPath()
+    );
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return {};
@@ -195,11 +278,7 @@ export const writeAppliedHashIndex = async (
     sortedIndex[key] = index[key];
   }
 
-  await fs.writeFile(
-    getAppliedHashesPath(),
-    JSON.stringify(sortedIndex, null, 2),
-    'utf8'
-  );
+  await writeJsonObjectAtomic(getAppliedHashesPath(), sortedIndex);
 };
 
 /**

@@ -895,6 +895,48 @@ Greet user as \${SETTINGS.preferredName}!`;
   });
 
   describe('loadSystemPromptsWithRegex', () => {
+    it('should map legacy placeholder names to current identifiers', async () => {
+      const mockStringsFile: StringsFile = {
+        version: '1.0.0',
+        prompts: [
+          {
+            id: 'test-prompt',
+            name: 'Test',
+            description: 'Test',
+            version: '1.0.0',
+            pieces: ['\nRead PDFs: ${', '() ? "yes" : "no"}'],
+            identifiers: [0],
+            identifierMap: { '0': 'CAN_READ_PDF_FILES' },
+          },
+        ],
+      };
+
+      const { downloadStringsFile } = await import('../systemPromptDownload');
+      vi.mocked(downloadStringsFile).mockResolvedValue(mockStringsFile);
+
+      await promptSync.preloadStringsFile('1.0.0');
+
+      const mockMarkdown = `<!--
+name: Test
+description: Test
+ccVersion: 1.0.0
+variables:
+  - CAN_READ_PDF_FILES
+-->
+
+Read PDFs: \${IS_PDF_SUPPORTED_FN() ? "yes" : "no"}`;
+
+      vi.spyOn(fs, 'readFile').mockResolvedValue(mockMarkdown);
+
+      const results = await promptSync.loadSystemPromptsWithRegex('1.0.0');
+      expect(results).toHaveLength(1);
+
+      const matchResult = ['full match', 'abc'] as RegExpMatchArray;
+      const interpolated = results[0].getInterpolatedContent(matchResult);
+
+      expect(interpolated).toBe('\nRead PDFs: ${abc() ? "yes" : "no"}');
+    });
+
     it('should correctly handle variable names with double dollar signs ($$)', async () => {
       const mockStringsFile: StringsFile = {
         version: '1.0.0',

@@ -70,6 +70,10 @@ export interface SyncSummary {
   results: SyncResult[];
 }
 
+const LEGACY_IDENTIFIER_ALIASES: Record<string, string[]> = {
+  CAN_READ_PDF_FILES: ['IS_PDF_SUPPORTED_FN'],
+};
+
 /**
  * Parses markdown file with YAML frontmatter using gray-matter
  * Uses HTML comment delimiters to avoid conflicts with markdown content
@@ -1347,6 +1351,21 @@ const applyIdentifierMapping = (
     if (humanName) {
       // Skip empty mappings
       reverseMap[humanName] = capturedVar;
+    }
+  }
+
+  for (const [canonicalName, legacyNames] of Object.entries(
+    LEGACY_IDENTIFIER_ALIASES
+  )) {
+    const actualVar = reverseMap[canonicalName];
+    if (!actualVar) {
+      continue;
+    }
+
+    for (const legacyName of legacyNames) {
+      if (!(legacyName in reverseMap)) {
+        reverseMap[legacyName] = actualVar;
+      }
     }
   }
 

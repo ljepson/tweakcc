@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import {
   CONFIG_DIR,
   NATIVE_BINARY_BACKUP_FILE,
+  ensureConfigDir,
   updateConfigFile,
 } from '../config';
 import { ClaudeCodeInstallationInfo, TweakccConfig } from '../types';
@@ -530,6 +531,8 @@ export const applyCustomization = async (
   ccInstInfo: ClaudeCodeInstallationInfo,
   patchFilter?: string[] | null
 ): Promise<ApplyCustomizationResult> => {
+  await ensureConfigDir();
+
   let content: string;
 
   if (ccInstInfo.nativeInstallationPath) {

@@ -733,58 +733,89 @@ export const addCurrentToolsetAtToolChangeComponentScope = (
 };
 
 /**
- * Find the mode change location in the code
- * Pattern: if(X==="acceptEdits")Y("auto-accept-mode");...mode:Z
- * Returns the index after the semicolon (insertion point) and the mode variable
+ * Find the mode change setState call in the code.
+ *
+ * Matches the pattern:
+ *   SETSTATE((VAR)=>({...VAR,toolPermissionContext:{...CONTEXT,mode:MODEVAR}}))
+ *
+ * inside a comma-expression like:
+ *   if(SETSTATE((...)),otherCall(...),flag) guard();
+ *
+ * Returns the full match, its position, and the captured variable names so we
+ * can replace the setState call with one that also updates toolset.
  */
-export const findModeChange = (
+export const findModeChangeSetState = (
   fileContents: string
-): { index: number; modeVar: string; setStateVar: string } | null => {
+): {
+  index: number;
+  length: number;
+  fullMatch: string;
+  setStateVar: string;
+  prevVar: string;
+  spreadVar: string;
+  contextVar: string;
+  modeVar: string;
+} | null => {
+  // Match: SETSTATE((PREV)=>({...PREV,toolPermissionContext:{...CTX,mode:MODE}}))
+  // Note: arrow param is parenthesized in minified output: (lA)=> not lA=>
   const pattern =
-    /if\(([$\w]+)\(\([$\w]+\)=>\(\{\.\.\.[$\w]+,toolPermissionContext.{0,200}?mode:([$\w]+)/;
+    /([$\w]+)\(\(([$\w]+)\)=>\(\{\.\.\.\2,toolPermissionContext:\{\.\.\.([$\w]+),mode:([$\w]+)\}\}\)\)/;
   const match = fileContents.match(pattern);
 
   if (!match || match.index === undefined) {
-    console.error('patch: findModeChange: failed to find mode change location');
+    console.error(
+      'patch: findModeChangeSetState: failed to find mode change setState'
+    );
     return null;
   }
 
   return {
     index: match.index,
-    modeVar: match[2],
-    // We can't get a setState ourselves because it's a hook that gets it and this code is not in
-    // the top-level component.But there's already an instantiation 600+ lines back (as of 2.1.31,
-    // and it's `h1 = h7()`), but even simpler, in newer versions they use in like the next line.
+    length: match[0].length,
+    fullMatch: match[0],
     setStateVar: match[1],
+    prevVar: match[2],
+    spreadVar: match[2],
+    contextVar: match[3],
+    modeVar: match[4],
   };
 };
 
 /**
- * Write the mode change toolset update code
- * This injects code before the mode change to automatically switch toolsets
+ * Write the mode change toolset update code.
+ *
+ * Replaces the original setState call with a single combined call that updates
+ * both toolPermissionContext.mode AND the toolset field atomically, avoiding
+ * the double-setState that breaks React's concurrent render pipeline.
+ *
+ * Before (two setState calls — causes plan mode stall):
+ *   setState(prev=>({...prev,toolset:"X"}));
+ *   if(setState(prev=>({...prev,toolPermissionContext:{...ctx,mode:m}})),...)
+ *
+ * After (single atomic setState):
+ *   if(setState(prev=>({...prev,toolset:m==="plan"?"PLAN":"DEFAULT",toolPermissionContext:{...ctx,mode:m}})),...)
  */
 export const writeModeChangeUpdateToolset = (
   oldFile: string,
   planModeToolset: string,
   defaultToolset: string
 ): string | null => {
-  const modeChangeResult = findModeChange(oldFile);
-  if (!modeChangeResult) {
+  const result = findModeChangeSetState(oldFile);
+  if (!result) {
     return null;
   }
 
-  const { index: modeChangeIndex, modeVar, setStateVar } = modeChangeResult;
+  const { index, length, setStateVar, prevVar, contextVar, modeVar } = result;
 
-  // Build the injection code using setState directly
-  const injectionCode = `if(${modeVar}==="plan"){${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(planModeToolset)}}));}else{${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(defaultToolset)}}));}`;
+  // Build a single setState that updates both toolset and toolPermissionContext
+  const toolsetExpr = `${modeVar}==="plan"?${JSON.stringify(planModeToolset)}:${JSON.stringify(defaultToolset)}`;
 
-  // Inject right before the mode change
+  const replacement = `${setStateVar}((${prevVar})=>({...${prevVar},toolset:${toolsetExpr},toolPermissionContext:{...${contextVar},mode:${modeVar}}}))`;
+
   const newFile =
-    oldFile.slice(0, modeChangeIndex) +
-    injectionCode +
-    oldFile.slice(modeChangeIndex);
+    oldFile.slice(0, index) + replacement + oldFile.slice(index + length);
 
-  showDiff(oldFile, newFile, injectionCode, modeChangeIndex, modeChangeIndex);
+  showDiff(oldFile, newFile, replacement, index, index + length);
 
   return newFile;
 };

@@ -70,6 +70,16 @@ export interface SyncSummary {
   results: SyncResult[];
 }
 
+const IDENTIFIER_FALLBACK_VALUES: Record<string, string> = {
+  ASK_USER_QUESTION_TOOL: '"AskUserQuestion"',
+  ASK_USER_QUESTION_TOOL_NAME: '"AskUserQuestion"',
+  EDIT_TOOL: '"Edit"',
+  EDIT_TOOL_NAME: '"Edit"',
+  WRITE_TOOL: '"Write"',
+  WRITE_TOOL_NAME: '"Write"',
+  EXIT_PLAN_MODE_TOOL: '"ExitPlanMode"',
+};
+
 const LEGACY_IDENTIFIER_ALIASES: Record<string, string[]> = {
   CAN_READ_PDF_FILES: ['IS_PDF_SUPPORTED_FN'],
   ASK_USER_QUESTION_TOOL_NAME: ['ASK_USER_QUESTION_TOOL'],
@@ -1354,8 +1364,11 @@ const applyIdentifierMapping = (
     const humanName = identifierMap[labelIndex];
 
     if (humanName) {
-      // Skip empty mappings
-      reverseMap[humanName] = capturedVar;
+      if (capturedVar === humanName && IDENTIFIER_FALLBACK_VALUES[humanName]) {
+        reverseMap[humanName] = IDENTIFIER_FALLBACK_VALUES[humanName];
+      } else {
+        reverseMap[humanName] = capturedVar;
+      }
     }
   }
 

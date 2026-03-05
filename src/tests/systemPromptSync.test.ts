@@ -520,6 +520,95 @@ Content here`;
     });
   });
 
+  describe('pairRenamedIdentifiers', () => {
+    it('should pair a single rename', () => {
+      const pairs = promptSync.pairRenamedIdentifiers(
+        ['ASK_USER_QUESTION_TOOL'],
+        ['ASK_USER_QUESTION_TOOL_NAME']
+      );
+      expect(pairs).toEqual([
+        ['ASK_USER_QUESTION_TOOL', 'ASK_USER_QUESTION_TOOL_NAME'],
+      ]);
+    });
+
+    it('should pair multiple renames by longest common prefix', () => {
+      const pairs = promptSync.pairRenamedIdentifiers(
+        ['EDIT_TOOL_NAME', 'EXPLORE_SUBAGENT_NOTE'],
+        ['EDIT_TOOL', 'EXPLORE_SUBAGENT']
+      );
+      expect(pairs).toContainEqual(['EDIT_TOOL_NAME', 'EDIT_TOOL']);
+      expect(pairs).toContainEqual([
+        'EXPLORE_SUBAGENT_NOTE',
+        'EXPLORE_SUBAGENT',
+      ]);
+    });
+
+    it('should return empty array when no removals', () => {
+      expect(promptSync.pairRenamedIdentifiers([], ['NEW_VAR'])).toEqual([]);
+    });
+
+    it('should return empty array when no additions', () => {
+      expect(promptSync.pairRenamedIdentifiers(['OLD_VAR'], [])).toEqual([]);
+    });
+
+    it('should always pair when exactly one removed and one added', () => {
+      const pairs = promptSync.pairRenamedIdentifiers(
+        ['ALPHA'],
+        ['ZEBRA_COMPLETELY_DIFFERENT']
+      );
+      expect(pairs).toEqual([['ALPHA', 'ZEBRA_COMPLETELY_DIFFERENT']]);
+    });
+
+    it('should skip dissimilar pairs when multiple candidates exist', () => {
+      const pairs = promptSync.pairRenamedIdentifiers(
+        ['EDIT_TOOL_NAME', 'ZZZZZ'],
+        ['EDIT_TOOL', 'QQQQQQQQQQQQQQ']
+      );
+      expect(pairs).toContainEqual(['EDIT_TOOL_NAME', 'EDIT_TOOL']);
+      expect(pairs).toHaveLength(1);
+    });
+  });
+
+  describe('renameIdentifiersInContent', () => {
+    it('should rename a single identifier in content', () => {
+      const result = promptSync.renameIdentifiersInContent(
+        '${AVAILABLE_TOOLS_SET.has(ASK_USER_QUESTION_TOOL)?' +
+          ' use ${ASK_USER_QUESTION_TOOL}:""}',
+        ['AVAILABLE_TOOLS_SET', 'ASK_USER_QUESTION_TOOL'],
+        ['AVAILABLE_TOOLS_SET', 'ASK_USER_QUESTION_TOOL_NAME']
+      );
+      expect(result.content).toContain('ASK_USER_QUESTION_TOOL_NAME');
+      expect(result.content).not.toMatch(/\bASK_USER_QUESTION_TOOL\b/);
+      expect(result.content).toContain('AVAILABLE_TOOLS_SET');
+      expect(result.renames).toHaveLength(1);
+    });
+
+    it('should rename multiple identifiers', () => {
+      const result = promptSync.renameIdentifiersInContent(
+        'Use ${EDIT_TOOL_NAME} and ${EXPLORE_SUBAGENT_NOTE}',
+        [
+          'EDIT_TOOL_NAME',
+          'EXPLORE_SUBAGENT_NOTE',
+          'ASK_USER_QUESTION_TOOL_NAME',
+        ],
+        ['EDIT_TOOL', 'EXPLORE_SUBAGENT', 'ASK_USER_QUESTION_TOOL_NAME']
+      );
+      expect(result.content).toBe('Use ${EDIT_TOOL} and ${EXPLORE_SUBAGENT}');
+      expect(result.renames).toHaveLength(2);
+    });
+
+    it('should return unchanged content when no renames needed', () => {
+      const content = 'Use ${SETTINGS}';
+      const result = promptSync.renameIdentifiersInContent(
+        content,
+        ['SETTINGS'],
+        ['SETTINGS']
+      );
+      expect(result.content).toBe(content);
+      expect(result.renames).toHaveLength(0);
+    });
+  });
+
   describe('updateVariables', () => {
     it('should update variables in frontmatter', async () => {
       const mockContent = `<!--
@@ -569,6 +658,64 @@ Content`;
       const writtenContent = writeFileSpy.mock.calls[0][1] as string;
       expect(writtenContent).not.toContain('variables:');
       expect(writtenContent).not.toContain('OLD_VAR');
+    });
+
+    it('should rename identifiers in content body when variables change', async () => {
+      const mockContent = `<!--
+name: Test
+description: Test
+ccVersion: 1.0.0
+variables:
+  - AVAILABLE_TOOLS_SET
+  - ASK_USER_QUESTION_TOOL
+-->
+
+\${AVAILABLE_TOOLS_SET.has(ASK_USER_QUESTION_TOOL)?\` use \${ASK_USER_QUESTION_TOOL}\`:""}`;
+
+      vi.spyOn(fs, 'readFile').mockResolvedValue(mockContent);
+      const writeFileSpy = vi
+        .spyOn(fs, 'writeFile')
+        .mockResolvedValue(undefined);
+
+      const newIdentifierMap = {
+        '0': 'AVAILABLE_TOOLS_SET',
+        '1': 'ASK_USER_QUESTION_TOOL_NAME',
+      };
+      const result = await promptSync.updateVariables(
+        'test-prompt',
+        newIdentifierMap
+      );
+
+      expect(result.renames).toHaveLength(1);
+      expect(result.renames[0]).toEqual([
+        'ASK_USER_QUESTION_TOOL',
+        'ASK_USER_QUESTION_TOOL_NAME',
+      ]);
+
+      const writtenContent = writeFileSpy.mock.calls[0][1] as string;
+      expect(writtenContent).toContain('ASK_USER_QUESTION_TOOL_NAME');
+      expect(writtenContent).toContain('AVAILABLE_TOOLS_SET');
+    });
+
+    it('should return empty renames when variables unchanged', async () => {
+      const mockContent = `<!--
+name: Test
+description: Test
+ccVersion: 1.0.0
+variables:
+  - SETTINGS
+-->
+
+Use \${SETTINGS}`;
+
+      vi.spyOn(fs, 'readFile').mockResolvedValue(mockContent);
+      vi.spyOn(fs, 'writeFile').mockResolvedValue(undefined);
+
+      const result = await promptSync.updateVariables('test-prompt', {
+        '1': 'SETTINGS',
+      });
+
+      expect(result.renames).toHaveLength(0);
     });
   });
 
@@ -738,6 +885,33 @@ Greet user as \${SETTINGS.preferredName}!`;
 
       // Should have called writeFile for updating variables
       expect(writeFileSpy).toHaveBeenCalled();
+    });
+
+    it('should report updated when versions match but identifiers renamed', async () => {
+      const mockContent = `<!--
+name: test-prompt
+description: Test prompt
+ccVersion: 2.0.0
+variables:
+  - OLD_SETTING
+-->
+
+Use \${OLD_SETTING.value}`;
+
+      vi.spyOn(fs, 'access').mockResolvedValue(undefined);
+      vi.spyOn(fs, 'readFile').mockResolvedValue(mockContent);
+      vi.spyOn(fs, 'writeFile').mockResolvedValue(undefined);
+
+      const renamedPrompt: StringsPrompt = {
+        ...mockPrompt,
+        identifierMap: { '1': 'NEW_SETTING' },
+      };
+
+      const result = await promptSync.syncPrompt(renamedPrompt);
+
+      expect(result.action).toBe('updated');
+      expect(result.oldVersion).toBe('2.0.0');
+      expect(result.newVersion).toBe('2.0.0');
     });
   });
 
@@ -935,6 +1109,64 @@ Read PDFs: \${IS_PDF_SUPPORTED_FN() ? "yes" : "no"}`;
       const interpolated = results[0].getInterpolatedContent(matchResult);
 
       expect(interpolated).toBe('\nRead PDFs: ${abc() ? "yes" : "no"}');
+    });
+
+    it('should map ASK_USER_QUESTION_TOOL to ASK_USER_QUESTION_TOOL_NAME', async () => {
+      const mockStringsFile: StringsFile = {
+        version: '2.1.68',
+        prompts: [
+          {
+            id: 'test-prompt',
+            name: 'Test',
+            description: 'Test',
+            version: '2.1.31',
+            pieces: [
+              'Tools are executed in a user-selected permission mode.${',
+              '.has(',
+              ')?` Use ${',
+              '}.`:""}',
+            ],
+            identifiers: [0, 1, 1],
+            identifierMap: {
+              '0': 'AVAILABLE_TOOLS_SET',
+              '1': 'ASK_USER_QUESTION_TOOL_NAME',
+            },
+          },
+        ],
+      };
+
+      const { downloadStringsFile } = await import('../systemPromptDownload');
+      vi.mocked(downloadStringsFile).mockResolvedValue(mockStringsFile);
+
+      await promptSync.preloadStringsFile('2.1.68');
+
+      const mockMarkdown = `<!--
+name: Test
+description: Test
+ccVersion: 2.1.31
+variables:
+  - AVAILABLE_TOOLS_SET
+  - ASK_USER_QUESTION_TOOL_NAME
+-->
+
+Tools are executed in a user-selected permission mode.\${AVAILABLE_TOOLS_SET.has(ASK_USER_QUESTION_TOOL)?\` Use \${ASK_USER_QUESTION_TOOL}.\`:""}`;
+
+      vi.spyOn(fs, 'readFile').mockResolvedValue(mockMarkdown);
+
+      const results = await promptSync.loadSystemPromptsWithRegex('2.1.68');
+      expect(results).toHaveLength(1);
+
+      const matchResult = [
+        'full match',
+        'toolSet',
+        'askTool',
+        'askTool',
+      ] as RegExpMatchArray;
+      const interpolated = results[0].getInterpolatedContent(matchResult);
+
+      expect(interpolated).toContain('${toolSet.has(askTool)');
+      expect(interpolated).toContain('Use ${askTool}');
+      expect(interpolated).not.toContain('ASK_USER_QUESTION_TOOL');
     });
 
     it('should correctly handle variable names with double dollar signs ($$)', async () => {

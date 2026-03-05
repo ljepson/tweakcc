@@ -87,6 +87,8 @@ const LEGACY_IDENTIFIER_ALIASES: Record<string, string[]> = {
   EDIT_TOOL: ['EDIT_TOOL_NAME'],
   WRITE_TOOL: ['WRITE_TOOL_NAME'],
   ADDITIONAL_PROMPT_SECTION: ['EXTENDED_TOOL_SEARCH_PROMPT'],
+  PLAN_FILE_INFO_BLOCK: ['SYSTEM_REMINDER'],
+  EXPLORE_SUBAGENT: ['EXPLORE_SUBAGENT_NOTE'],
 };
 
 /**
@@ -350,41 +352,120 @@ export const writePromptFile = async (
   await fs.writeFile(filePath, content, 'utf-8');
 };
 
+// ====== Identifier Rename Detection ======
+
+const longestCommonPrefix = (a: string, b: string): number => {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+};
+
+export const pairRenamedIdentifiers = (
+  removed: string[],
+  added: string[]
+): Array<[string, string]> => {
+  if (removed.length === 0 || added.length === 0) return [];
+
+  if (removed.length === 1 && added.length === 1) {
+    return [[removed[0], added[0]]];
+  }
+
+  const pairs: Array<[string, string]> = [];
+  const usedAdded = new Set<string>();
+
+  const scored = removed.flatMap(r =>
+    added.map(a => ({
+      removed: r,
+      added: a,
+      score: longestCommonPrefix(r, a),
+    }))
+  );
+  scored.sort((a, b) => b.score - a.score);
+
+  const usedRemoved = new Set<string>();
+  for (const { removed: r, added: a, score } of scored) {
+    if (usedRemoved.has(r) || usedAdded.has(a)) continue;
+    const minLen = Math.min(r.length, a.length);
+    if (score >= minLen * 0.4 || score >= 4) {
+      pairs.push([r, a]);
+      usedRemoved.add(r);
+      usedAdded.add(a);
+    }
+  }
+
+  return pairs;
+};
+
+export const renameIdentifiersInContent = (
+  content: string,
+  oldVariables: string[],
+  newVariables: string[]
+): { content: string; renames: Array<[string, string]> } => {
+  const oldSet = new Set(oldVariables);
+  const newSet = new Set(newVariables);
+
+  const removed = oldVariables.filter(v => !newSet.has(v));
+  const added = newVariables.filter(v => !oldSet.has(v));
+
+  const pairs = pairRenamedIdentifiers(removed, added);
+  if (pairs.length === 0) return { content, renames: [] };
+
+  let result = content;
+  const sortedPairs = [...pairs].sort((a, b) => b[0].length - a[0].length);
+
+  for (const [oldName, newName] of sortedPairs) {
+    const pattern = new RegExp(`\\b${oldName}\\b`, 'g');
+    result = result.replace(pattern, newName);
+  }
+
+  return { content: result, renames: pairs };
+};
+
+// ====== Variable Management ======
+
 /**
- * Updates variables list in a markdown file's frontmatter
- * This ensures the file always has the latest available variables
+ * Updates variables list in a markdown file's frontmatter and renames
+ * identifier references in the content body when variables change
  */
 export const updateVariables = async (
   promptId: string,
   newIdentifierMap: Record<string, string>
-): Promise<void> => {
+): Promise<{ renames: Array<[string, string]> }> => {
   const filePath = getPromptFilePath(promptId);
   const markdown = await fs.readFile(filePath, 'utf-8');
   const parsed = matter(markdown, {
     delimiters: ['<!--', '-->'],
   });
 
-  // Extract unique variables from identifierMap
-  const variables =
+  const oldVariables: string[] = parsed.data.variables || [];
+
+  const newVariables =
     Object.keys(newIdentifierMap).length > 0
       ? [...new Set(Object.values(newIdentifierMap))]
-      : undefined;
+      : [];
 
-  // Update frontmatter with new variables
+  const { content: updatedContent, renames } = renameIdentifiersInContent(
+    parsed.content,
+    oldVariables,
+    newVariables
+  );
+
   const updatedData: Record<string, string | string[]> = {
     name: parsed.data.name,
     description: parsed.data.description,
     ccVersion: parsed.data.ccVersion,
   };
 
-  if (variables && variables.length > 0) {
-    updatedData.variables = variables;
+  if (newVariables.length > 0) {
+    updatedData.variables = newVariables;
   }
 
-  const updatedMarkdown = matter.stringify(parsed.content, updatedData, {
+  const updatedMarkdown = matter.stringify(updatedContent, updatedData, {
     delimiters: ['<!--', '-->'],
   });
   await writePromptFile(promptId, updatedMarkdown);
+
+  return { renames };
 };
 
 /**
@@ -863,8 +944,8 @@ export const syncPrompt = async (
   const existingFile = await readPromptFile(prompt.id);
   result.oldVersion = existingFile.ccVersion;
 
-  // Always update variables list
-  await updateVariables(prompt.id, prompt.identifierMap);
+  // Always update variables list (also renames identifiers in content)
+  const { renames } = await updateVariables(prompt.id, prompt.identifierMap);
 
   // Check version comparison
   if (existingFile.ccVersion && prompt.version) {
@@ -874,8 +955,11 @@ export const syncPrompt = async (
     );
 
     if (versionComparison === 0) {
-      // Same version - already updated above
-      result.action = 'skipped';
+      if (renames.length > 0) {
+        result.action = 'updated';
+      } else {
+        result.action = 'skipped';
+      }
       return result;
     }
 

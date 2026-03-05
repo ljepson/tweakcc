@@ -8,40 +8,37 @@ import { showDiff } from './index';
  *
  * This finds the function that reads CLAUDE.md files and modifies it to:
  * 1. Add a `didReroute` parameter to the function
- * 2. At the early `return null` (when the file doesn't exist), check if the
- *    path ends with CLAUDE.md and try alternative names (unless didReroute
- *    is true)
+ * 2. In the catch block where ENOENT/EISDIR returns null, inject fallback
+ *    logic to try alternative filenames (unless didReroute is true)
  * 3. Recursive calls pass didReroute=true to avoid infinite loops
  *
- * CC 2.1.62 (approx. by Claude):
+ * CC <=2.1.62 had an explicit existsSync/isFile check before readFileSync.
+ * CC >=2.1.63 removed that check and relies on try/catch with error codes:
+ *
  * ```diff
- * -function _t7(A, q) {
- * +function _t7(A, q, didReroute) {
+ * -function c_A(H,$) {
+ * +function c_A(H,$,didReroute) {
  *    try {
- *      let K = x1();
- * -    if (!K.existsSync(A) || !K.statSync(A).isFile()) return null;
- * +    if (!K.existsSync(A) || !K.statSync(A).isFile()) {
- * +      if (!didReroute && (A.endsWith("/CLAUDE.md") || A.endsWith("\\CLAUDE.md"))) {
- * +        for (let alt of ["AGENTS.md", "GEMINI.md", "QWEN.md"]) {
- * +          let altPath = A.slice(0, -9) + alt;
- * +          if (K.existsSync(altPath) && K.statSync(altPath).isFile())
- * +            return _t7(altPath, q, true);
+ *      let L = L$().readFileSync(H, {encoding:"utf-8"}),
+ *          I = DM.extname(H).toLowerCase();
+ *      ...
+ *      return { path: H, type: $, content: f, globs: B };
+ *    } catch(A) {
+ *      let L = A.code;
+ * -    if (L==="ENOENT" || L==="EISDIR") return null;
+ * +    if (L==="ENOENT" || L==="EISDIR") {
+ * +      if (!didReroute && (H.endsWith("/CLAUDE.md") || H.endsWith("\\CLAUDE.md"))) {
+ * +        let _fs = L$();
+ * +        for (let alt of ["AGENTS.md","GEMINI.md","QWEN.md"]) {
+ * +          let altPath = H.slice(0,-9) + alt;
+ * +          if (_fs.existsSync(altPath) && _fs.statSync(altPath).isFile())
+ * +            return c_A(altPath, $, true);
  * +        }
  * +      }
  * +      return null;
  * +    }
- *      let Y = UL9(A).toLowerCase();
- *      if (Y && !dL9.has(Y))
- *        return (I(`Skipping non-text file in @include: ${A}`), null);
- *      let z = K.readFileSync(A, { encoding: "utf-8" }),
- *        { content: w, paths: H } = cL9(z);
- *      return { path: A, type: q, content: w, globs: H };
- *    } catch (K) {
- *      if (K instanceof Error && K.message.includes("EACCES"))
- *        n("tengu_claude_md_permission_error", {
- *          is_access_error: 1,
- *          has_home_dir: A.includes(_8()) ? 1 : 0,
- *        });
+ *      if (L==="EACCES")
+ *        c("tengu_claude_md_permission_error", {...});
  *    }
  *    return null;
  *  }
@@ -81,30 +78,51 @@ export const writeAgentsMd = (
 
   showDiff(file, newFile, ',didReroute', sigIndex, sigIndex);
 
-  // Step 2: Inject fallback at the early return null (when file doesn't exist)
-  const earlyReturnPattern = /\.isFile\(\)\)return null/;
+  // Step 2: Inject fallback logic
+  // Try new style first (CC >=2.1.63): ENOENT/EISDIR catch block
+  // Fall back to old style (CC <=2.1.62): early existsSync/isFile return null
   const funcBody = newFile.slice(funcStart);
+
+  const enoentPattern = /===?"ENOENT"\|\|[$\w.]+===?"EISDIR"\)return null/;
+  const enoentMatch = funcBody.match(enoentPattern);
+
+  const earlyReturnPattern = /\.isFile\(\)\)return null/;
   const earlyReturnMatch = funcBody.match(earlyReturnPattern);
 
-  if (!earlyReturnMatch || earlyReturnMatch.index === undefined) {
+  if (enoentMatch && enoentMatch.index !== undefined) {
+    // New style: inject at ENOENT/EISDIR return null in catch block
+    const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){let _fs=${fsExpr};for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(_fs.existsSync(altPath)&&_fs.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
+
+    const matchStart = funcStart + enoentMatch.index;
+    const oldStr = enoentMatch[0];
+    const newStr = oldStr.replace(')return null', `){${fallback}return null;}`);
+
+    newFile =
+      newFile.slice(0, matchStart) +
+      newStr +
+      newFile.slice(matchStart + oldStr.length);
+
+    showDiff(file, newFile, newStr, matchStart, matchStart);
+  } else if (earlyReturnMatch && earlyReturnMatch.index !== undefined) {
+    // Old style: inject at existsSync/isFile early return null
+    const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(${fsExpr}.existsSync(altPath)&&${fsExpr}.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
+
+    const earlyReturnStart = funcStart + earlyReturnMatch.index;
+    const oldStr = earlyReturnMatch[0];
+    const newStr = `.isFile()){${fallback}return null;}`;
+
+    newFile =
+      newFile.slice(0, earlyReturnStart) +
+      newStr +
+      newFile.slice(earlyReturnStart + oldStr.length);
+
+    showDiff(file, newFile, newStr, earlyReturnStart, earlyReturnStart);
+  } else {
     console.error(
-      'patch: agentsMd: failed to find early return null for injection'
+      'patch: agentsMd: failed to find injection point (no ENOENT catch or early return null)'
     );
     return null;
   }
-
-  const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(${fsExpr}.existsSync(altPath)&&${fsExpr}.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
-
-  const earlyReturnStart = funcStart + earlyReturnMatch.index;
-  const oldStr = earlyReturnMatch[0];
-  const newStr = `.isFile()){${fallback}return null;}`;
-
-  newFile =
-    newFile.slice(0, earlyReturnStart) +
-    newStr +
-    newFile.slice(earlyReturnStart + oldStr.length);
-
-  showDiff(file, newFile, newStr, earlyReturnStart, earlyReturnStart);
 
   return newFile;
 };

@@ -80,6 +80,7 @@ export function MiscView({ onSubmit }: MiscViewProps) {
     filterScrollEscapeSequences: false,
     enableWorktreeMode: true,
     disableBetaHeaders: false,
+    skipTrustDialog: true,
     enableContextLimitOverride: false,
     enableModelCustomizations: true,
   };

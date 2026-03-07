@@ -70,6 +70,7 @@ import { writeAgentsMd } from './agentsMd';
 import { writeAutoAcceptPlanMode } from './autoAcceptPlanMode';
 import { writeAllowBypassPermsInSudo } from './allowBypassPermsInSudo';
 import { writeSuppressNativeInstallerWarning } from './suppressNativeInstallerWarning';
+import { writeSkipTrustDialog } from './skipTrustDialog';
 import { writeScrollEscapeSequenceFilter } from './scrollEscapeSequenceFilter';
 import { writeWorktreeMode } from './worktreeMode';
 import {
@@ -349,6 +350,12 @@ const PATCH_DEFINITIONS = [
     name: 'Suppress native installer warning',
     group: PatchGroup.MISC_CONFIGURABLE,
     description: 'Suppress the native installer warning message at startup',
+  },
+  {
+    id: 'skip-trust-dialog',
+    name: 'Skip trust dialog',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description: "Skip the 'Accessing workspace' trust dialog shown at startup",
   },
   {
     id: 'filter-scroll-escape-sequences',
@@ -798,6 +805,10 @@ export const applyCustomization = async (
     'suppress-native-installer-warning': {
       fn: c => writeSuppressNativeInstallerWarning(c),
       condition: !!config.settings.misc?.suppressNativeInstallerWarning,
+    },
+    'skip-trust-dialog': {
+      fn: c => writeSkipTrustDialog(c),
+      condition: config.settings.misc?.skipTrustDialog !== false,
     },
     'filter-scroll-escape-sequences': {
       fn: c => writeScrollEscapeSequenceFilter(c),

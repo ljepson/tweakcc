@@ -714,6 +714,7 @@ export const DEFAULT_SETTINGS: Settings = {
     filterScrollEscapeSequences: false,
     enableWorktreeMode: true,
     disableBetaHeaders: false,
+    skipTrustDialog: true,
     enableContextLimitOverride: false,
     enableModelCustomizations: true,
   },

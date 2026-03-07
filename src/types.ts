@@ -132,6 +132,7 @@ export interface MiscConfig {
   filterScrollEscapeSequences: boolean;
   enableWorktreeMode: boolean;
   disableBetaHeaders: boolean;
+  skipTrustDialog: boolean;
   enableContextLimitOverride: boolean;
   enableModelCustomizations: boolean;
 }

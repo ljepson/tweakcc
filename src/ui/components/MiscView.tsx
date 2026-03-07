@@ -601,6 +601,19 @@ export function MiscView({ onSubmit }: MiscViewProps) {
         },
       },
       {
+        id: 'skipTrustDialog',
+        title: 'Skip trust dialog',
+        description:
+          "Skip the 'Accessing workspace' trust dialog shown at startup.",
+        getValue: () => settings.misc?.skipTrustDialog ?? true,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.skipTrustDialog = !settings.misc!.skipTrustDialog;
+          });
+        },
+      },
+      {
         id: 'disableBetaHeaders',
         title: 'Disable beta headers',
         description:

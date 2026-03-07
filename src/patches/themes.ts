@@ -18,18 +18,49 @@ function getThemesLocation(oldFile: string): {
     return null;
   }
 
-  const objArrPat =
-    /\[(?:\.{3}\[\],)?(?:\{label:"(?:Dark|Light).+?",value:".+?"\},?)+\]/;
-  const objPat = /return\{(?:[$\w-]+?:"(?:Auto|Dark|Light).+?",?)+\}/;
-  const objArrMatch = oldFile.match(objArrPat);
-  const objMatch = oldFile.match(objPat);
+  const themePickerAnchor = oldFile.indexOf(
+    'ZA("theme:toggleSyntaxHighlighting"'
+  );
+  const settingsThemeAnchor = oldFile.indexOf('.id==="theme"?');
 
-  if (!objArrMatch || objArrMatch.index == undefined) {
+  let objArrMatch: RegExpMatchArray | null = null;
+  let objArrStart = -1;
+  if (themePickerAnchor !== -1) {
+    const themePickerSlice = oldFile.slice(
+      themePickerAnchor,
+      themePickerAnchor + 2500
+    );
+    const match = themePickerSlice.match(
+      /\[(?:\.{3}\[\],)?(?:\{label:"(?:Dark|Light).+?",value:".+?"\},?)+\]/
+    );
+    if (match && match.index !== undefined) {
+      objArrMatch = match;
+      objArrStart = themePickerAnchor + match.index;
+    }
+  }
+
+  let objMatch: RegExpMatchArray | null = null;
+  let objStart = -1;
+  if (settingsThemeAnchor !== -1) {
+    const settingsThemeSlice = oldFile.slice(
+      settingsThemeAnchor,
+      settingsThemeAnchor + 800
+    );
+    const match = settingsThemeSlice.match(
+      /return\{(?:[$\w-]+?:"(?:Auto|Dark|Light).+?",?)+\}/
+    );
+    if (match && match.index !== undefined) {
+      objMatch = match;
+      objStart = settingsThemeAnchor + match.index;
+    }
+  }
+
+  if (!objArrMatch || objArrStart === -1) {
     console.error('patch: themes: failed to find objArrMatch');
     return null;
   }
 
-  if (!objMatch || objMatch.index == undefined) {
+  if (!objMatch || objStart === -1) {
     console.error('patch: themes: failed to find objMatch');
     return null;
   }
@@ -41,12 +72,12 @@ function getThemesLocation(oldFile: string): {
       identifiers: [switchMatch[1].trim()],
     },
     objArr: {
-      startIndex: objArrMatch.index,
-      endIndex: objArrMatch.index + objArrMatch[0].length,
+      startIndex: objArrStart,
+      endIndex: objArrStart + objArrMatch[0].length,
     },
     obj: {
-      startIndex: objMatch.index,
-      endIndex: objMatch.index + objMatch[0].length,
+      startIndex: objStart,
+      endIndex: objStart + objMatch[0].length,
     },
   };
 }

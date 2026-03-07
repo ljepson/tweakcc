@@ -43,21 +43,55 @@ export const writeTokenCountRounding = (
     [fullMatch, pre, , partToWrap, post] = m1;
     startIndex = m1.index;
   } else {
-    // Try CC 2.1.71+ pattern: DH=Z6($H),...DH," tokens"
-    // Token count is pre-computed into a variable, formatted by a function
-    const m2 = oldFile.match(
-      /,([$\w]+)=([$\w]+)\((.+?)\),.{0,500}\1," tokens"/
-    );
+    const tokenLiteral = '" tokens"';
+    let m2:
+      | {
+          fullMatch: string;
+          pre: string;
+          partToWrap: string;
+          post: string;
+          startIndex: number;
+        }
+      | undefined;
 
-    if (m2 && m2.index !== undefined) {
-      // Wrap the expression inside the formatter call
-      const varName = m2[1];
-      const funcName = m2[2];
-      partToWrap = m2[3];
-      pre = `,${varName}=${funcName}(`;
-      post = m2[0].slice(pre.length + partToWrap.length);
-      fullMatch = m2[0];
-      startIndex = m2.index;
+    let tokenIdx = -1;
+    while ((tokenIdx = oldFile.indexOf(tokenLiteral, tokenIdx + 1)) !== -1) {
+      const tokenUseSlice = oldFile.slice(
+        Math.max(0, tokenIdx - 40),
+        tokenIdx + tokenLiteral.length
+      );
+      const tokenUseMatch = tokenUseSlice.match(/([$\w]+)," tokens"$/);
+      if (!tokenUseMatch) continue;
+
+      const varName = tokenUseMatch[1];
+      const searchStart = Math.max(0, tokenIdx - 1200);
+      const searchSlice = oldFile.slice(
+        searchStart,
+        tokenIdx + tokenLiteral.length
+      );
+      if (!searchSlice.includes('key:"tokens"')) continue;
+
+      const assignmentPattern = new RegExp(
+        `,(${varName})=([\\$\\w]+)\\(([\\$\\w.]+)\\),`
+      );
+      const assignmentMatch = searchSlice.match(assignmentPattern);
+      if (!assignmentMatch || assignmentMatch.index === undefined) continue;
+
+      const assignmentStart = searchStart + assignmentMatch.index;
+      const assignmentEnd = assignmentStart + assignmentMatch[0].length;
+      const matchedText = oldFile.slice(assignmentStart, assignmentEnd);
+      m2 = {
+        fullMatch: matchedText,
+        pre: `,${assignmentMatch[1]}=${assignmentMatch[2]}(`,
+        partToWrap: assignmentMatch[3],
+        post: '),',
+        startIndex: assignmentStart,
+      };
+      break;
+    }
+
+    if (m2) {
+      ({ fullMatch, pre, partToWrap, post, startIndex } = m2);
     } else {
       // Try oldest version pattern
       const m3 = oldFile.match(

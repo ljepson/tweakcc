@@ -18,8 +18,9 @@ function getThemesLocation(oldFile: string): {
     return null;
   }
 
-  const objArrPat = /\[(?:\{label:"(?:Dark|Light).+?",value:".+?"\},?)+\]/;
-  const objPat = /return\{(?:[$\w]+?:"(?:Dark|Light).+?",?)+\}/;
+  const objArrPat =
+    /\[(?:\.{3}\[\],)?(?:\{label:"(?:Dark|Light).+?",value:".+?"\},?)+\]/;
+  const objPat = /return\{(?:[$\w-]+?:"(?:Auto|Dark|Light).+?",?)+\}/;
   const objArrMatch = oldFile.match(objArrPat);
   const objMatch = oldFile.match(objPat);
 

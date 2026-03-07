@@ -58,7 +58,7 @@ const patchExtraction = (file: string): string | null => {
  * Patch 2: Bypass tengu_coral_fern flag check for past session search
  *
  * CC ≤2.1.37: negative guard with early return
- *   if(!fn("tengu_coral_fern",!1))return null;
+ *   if(!fn("tengu_coral_fern",!1))return null;  (or return[] in CC ≥2.1.71)
  *
  * CC ≥2.1.38: positive conditional block
  *   if(fn("tengu_coral_fern",!1)){...}
@@ -86,7 +86,8 @@ const patchPastSessions = (file: string): string | null => {
   }
 
   // Fall back to old pattern (CC ≤2.1.37): negative guard with early return
-  const oldPattern = /if\(![$\w]+\("tengu_coral_fern",!1\)\)return null;/;
+  const oldPattern =
+    /if\(![$\w]+\("tengu_coral_fern",!1\)\)return(?:null|\[\]);/;
   const oldMatch = file.match(oldPattern);
 
   if (oldMatch && oldMatch.index !== undefined) {

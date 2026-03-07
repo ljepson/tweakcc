@@ -2,29 +2,13 @@ import { showDiff } from './index';
 
 export const writeSkipTrustDialog = (file: string): string | null => {
   // Match the trust-check function that decides whether to show the
-  // "Accessing workspace" dialog at startup.
+  // "Accessing workspace" dialog at startup. The function checks
+  // hasTrustDialogAccepted for the current directory and parents,
+  // returning false if none are trusted.
   //
-  // function XG(){
-  //   let H=RAH(LQ(),yO);
-  //   if($UH())return!0;
-  //   let $=jh$();
-  //   if(H.projects?.[$]?.hasTrustDialogAccepted)return!0;
-  //   let L=gNH(w$());
-  //   while(!0){
-  //     if(H.projects?.[L]?.hasTrustDialogAccepted)return!0;
-  //     let D=gNH(qG.resolve(L,".."));
-  //     if(D===L)break;
-  //     L=D
-  //   }
-  //   return!1
-  // }
-  //
-  // Patch: inject `return!0;` at the start of the function body so it always
+  // Patch: replace the function body with `return!0` so it always
   // returns true, skipping the trust dialog entirely.
 
-  // Find the function by its unique content: checks hasTrustDialogAccepted
-  // and ends with return!1. Use indexOf for the anchor then walk braces to
-  // find the enclosing function boundaries.
   const anchor = 'hasTrustDialogAccepted)return!0;';
   const anchorIdx = file.indexOf(anchor);
   if (anchorIdx === -1) {
@@ -34,19 +18,29 @@ export const writeSkipTrustDialog = (file: string): string | null => {
     return null;
   }
 
-  // Walk backwards to find `function XXXX(){`
-  const chunk = file.substring(Math.max(0, anchorIdx - 200), anchorIdx);
-  const fnMatch = chunk.match(/function ([$\w]+)\(\)\{[^]*$/);
+  // Walk backwards from anchor to find the nearest `function XXX(){`
+  // The function starts within ~100 chars before the first anchor.
+  // Use progressively larger windows to handle different CC versions.
+  let fnMatch: RegExpMatchArray | null = null;
+  let chunkStart = 0;
+
+  for (const lookback of [100, 200, 400]) {
+    chunkStart = Math.max(0, anchorIdx - lookback);
+    const chunk = file.substring(chunkStart, anchorIdx);
+    // Match the LAST function declaration in the chunk (closest to anchor)
+    const matches = [...chunk.matchAll(/function ([$\w]+)\(\)\{/g)];
+    if (matches.length > 0) {
+      fnMatch = matches[matches.length - 1];
+      break;
+    }
+  }
+
   if (!fnMatch || fnMatch.index === undefined) {
     console.error('patch: skipTrustDialog: failed to find enclosing function');
     return null;
   }
 
-  const fnStart =
-    anchorIdx -
-    200 +
-    Math.max(0, anchorIdx - 200 < 0 ? 200 + (anchorIdx - 200) : 0) +
-    fnMatch.index;
+  const fnStart = chunkStart + fnMatch.index;
   const bodyStart = fnStart + fnMatch[0].indexOf('{');
 
   // Walk forward from bodyStart counting braces to find the closing }
@@ -68,7 +62,6 @@ export const writeSkipTrustDialog = (file: string): string | null => {
     return null;
   }
 
-  // Verify this function ends with return!1
   const fnBody = file.substring(fnStart, fnEnd);
   if (!fnBody.endsWith('return!1}')) {
     console.error(

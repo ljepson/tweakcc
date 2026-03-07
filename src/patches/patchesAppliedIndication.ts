@@ -37,9 +37,13 @@ const findTweakccVersionLocation = (
   fileContents: string
 ): LocationResult | null => {
   // Find Claude Code version display
+  // Old pattern: React.createElement(Text,{bold:!0},"Claude Code")," ",React.createElement(Text,{dimColor:!0},"v",ver)
+  // New pattern (React compiler): createElement(E,{bold:!0},"Claude Code"),H[N]=y;...createElement(E,null,y," ",createElement(E,{dimColor:!0},"v",O))
   const pattern =
     /[^$\w]([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
-  const match = fileContents.match(pattern);
+  const newPattern =
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),null,[$\w]+," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)\)/;
+  const match = fileContents.match(pattern) || fileContents.match(newPattern);
   if (!match || match.index === undefined) {
     console.error(
       'patch: patchesAppliedIndication: failed to find Claude Code version pattern'
@@ -249,7 +253,9 @@ const findPatchesListLocation = (
   // 1. Find the same regex as patch 2
   const pattern =
     /[^$\w]([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
-  const match = fileContents.match(pattern);
+  const newPattern =
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),null,[$\w]+," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)\)/;
+  const match = fileContents.match(pattern) || fileContents.match(newPattern);
   if (!match || match.index === undefined) {
     console.error(
       'patch: patchesAppliedIndication: failed to find Claude Code version pattern for patch 3'

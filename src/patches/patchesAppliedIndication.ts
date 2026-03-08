@@ -171,7 +171,7 @@ const applyIndicatorViewPatch = (
 
 /**
  * PATCH 5: Inserts patches applied list in the indicator view
- * Uses stack machine starting at level 2 to find insertion point
+ * Dynamically detects nesting level by scanning back to the enclosing function boundary
  */
 const applyIndicatorPatchesListPatch = (
   fileContents: string,
@@ -182,8 +182,35 @@ const applyIndicatorPatchesListPatch = (
   chalkVar: string,
   patchesApplies: string[]
 ): string | null => {
-  // Start stack machine at level = 5
-  let level = 4; // This right at the very end of the header component, right after the debug banner.
+  // Dynamically determine nesting level at startIndex by scanning backwards
+  // to find the enclosing function boundary, then counting parens forward
+  const lookbackSize = 5000;
+  const lookbackStart = Math.max(0, startIndex - lookbackSize);
+  const lookback = fileContents.slice(lookbackStart, startIndex);
+
+  const funcPattern = /\}function\s+([$\w]+)\(/g;
+  const funcMatches = Array.from(lookback.matchAll(funcPattern));
+
+  let level: number;
+  if (funcMatches.length > 0) {
+    const lastFunc = funcMatches[funcMatches.length - 1];
+    // +1 to skip the closing } of the previous function
+    const funcStartAbsolute = lookbackStart + lastFunc.index! + 1;
+
+    // Count paren nesting from function start to startIndex
+    level = 0;
+    for (let i = funcStartAbsolute; i < startIndex; i++) {
+      if (fileContents[i] === '(') level++;
+      else if (fileContents[i] === ')') level--;
+    }
+  } else {
+    // Fallback: hardcoded value (original behavior)
+    level = 4;
+    console.error(
+      'patch: patchesAppliedIndication: PATCH 5 could not find enclosing function, falling back to hardcoded level'
+    );
+  }
+
   let currentIndex = startIndex;
   let insertionIndex = -1;
 

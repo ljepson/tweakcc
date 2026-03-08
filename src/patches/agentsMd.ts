@@ -4,92 +4,41 @@ import { showDiff } from './index';
 
 /**
  * Patches the CLAUDE.md file reading function to also check for alternative
- * filenames (e.g., AGENTS.md).
+ * filenames (e.g., AGENTS.md) when CLAUDE.md doesn't exist.
  *
  * This finds the function that reads CLAUDE.md files and modifies it to:
- * 1. First try the original CLAUDE.md path
- * 2. If not found, try each alternative name in order
+ * 1. Add a `didReroute` parameter to the function
+ * 2. In the catch block where ENOENT/EISDIR returns null, inject fallback
+ *    logic to try alternative filenames (unless didReroute is true)
+ * 3. Recursive calls pass didReroute=true to avoid infinite loops
  *
- * CC 1.0.24:
+ * CC <=2.1.62 had an explicit existsSync/isFile check before readFileSync.
+ * CC >=2.1.63 removed that check and relies on try/catch with error codes:
+ *
  * ```diff
- *  function gE2(A, B) {
+ * -function c_A(H,$) {
+ * +function c_A(H,$,didReroute) {
  *    try {
- *      if (f1().existsSync(A)) {
- *        if (!f1().statSync(A).isFile()) return null;
- *        let I = f1().readFileSync(A, { encoding: "utf-8" });
- *        return { path: A, type: B, content: I };
- * +    } else if (A.endsWith("/CLAUDE.md") || A.endsWith("\\CLAUDE.md")) {
- * +      for (let alt of ["AGENTS.md", "GEMINI.md", "QWEN.md"]) {
- * +        let altPath = A.slice(0, -9) + alt;
- * +        if (f1().existsSync(altPath) && f1().statSync(altPath).isFile())
- * +          return gE2(altPath, B);
- * +      }
- * +    }
- *    } catch (Q) {
- *      if (Q instanceof Error && Q.message.includes("EACCES"))
- *        N1("tengu_claude_md_permission_error", {
- *          is_access_error: 1,
- *          has_home_dir: A.includes(z4()) ? 1 : 0,
- *        });
- *    }
- *    return null;
- *  }
- * ```
- *
- * CC 2.0.0:
- * ```
- *  function q8B(A, B) {
- *    try {
- *      if (C1().existsSync(A)) {
- *        if (!C1().statSync(A).isFile()) return null;
- *        let Z = C1().readFileSync(A, { encoding: "utf-8" });
- *        return { path: A, type: B, content: Z };
- * +    } else if (A.endsWith("/CLAUDE.md") || A.endsWith("\\CLAUDE.md")) {
- * +      for (let alt of ["AGENTS.md", "GEMINI.md", "QWEN.md"]) {
- * +        let altPath = A.slice(0, -9) + alt;
- * +        if (C1().existsSync(altPath) && C1().statSync(altPath).isFile())
- * +          return q8B(altPath, B);
- * +      }
- *      }
- *    } catch (Q) {
- *      if (Q instanceof Error && Q.message.includes("EACCES"))
- *        B1("tengu_claude_md_permission_error", {
- *          is_access_error: 1,
- *          has_home_dir: A.includes(p2()) ? 1 : 0,
- *        });
- *    }
- *    return null;
- *  }
- * ```
- *
- * CC 2.1.29:
- * ```
- *  function _t7(A, q) {
- *    try {
- *      let K = x1();
- * -    if (!K.existsSync(A) || !K.statSync(A).isFile()) return null;
- * +    if (!K.existsSync(A) || !K.statSync(A).isFile()) {
- * +      if (A.endsWith("/CLAUDE.md") || A.endsWith("\\CLAUDE.md")) {
- * +        for (let alt of ["AGENTS.md", "GEMINI.md", "QWEN.md"]) {
- * +          let altPath = A.slice(0, -9) + alt;
- * +          if (K.existsSync(altPath) && K.statSync(altPath).isFile())
- * +            return _t7(altPath, q);
+ *      let L = L$().readFileSync(H, {encoding:"utf-8"}),
+ *          I = DM.extname(H).toLowerCase();
+ *      ...
+ *      return { path: H, type: $, content: f, globs: B };
+ *    } catch(A) {
+ *      let L = A.code;
+ * -    if (L==="ENOENT" || L==="EISDIR") return null;
+ * +    if (L==="ENOENT" || L==="EISDIR") {
+ * +      if (!didReroute && (H.endsWith("/CLAUDE.md") || H.endsWith("\\CLAUDE.md"))) {
+ * +        let _fs = L$();
+ * +        for (let alt of ["AGENTS.md","GEMINI.md","QWEN.md"]) {
+ * +          let altPath = H.slice(0,-9) + alt;
+ * +          if (_fs.existsSync(altPath) && _fs.statSync(altPath).isFile())
+ * +            return c_A(altPath, $, true);
  * +        }
  * +      }
  * +      return null;
  * +    }
- *      let Y = UL9(A).toLowerCase();
- *      if (Y && !dL9.has(Y))
- *        return (I(`Skipping non-text file in @include: ${A}`), null);
- *      let z = K.readFileSync(A, { encoding: "utf-8" }),
- *        { content: w, paths: H } = cL9(z);
- *      return { path: A, type: q, content: w, globs: H };
- *    } catch (K) {
- *      if (K instanceof Error && K.message.includes("EACCES"))
- *        n("tengu_claude_md_permission_error", {
- *          is_access_error: 1,
- *          has_home_dir: A.includes(_8()) ? 1 : 0,
- *        });
+ *      if (L==="EACCES")
+ *        c("tengu_claude_md_permission_error", {...});
  *    }
  *    return null;
  *  }
@@ -99,85 +48,81 @@ export const writeAgentsMd = (
   file: string,
   altNames: string[]
 ): string | null => {
-  // Step 1: Find the function that handles CLAUDE.md file reading
-  // Pattern: function xyz(a, b) { ...... return { ... path: ..., content: ... } }
   const funcPattern =
-    /function ([$\w]+)\(([$\w]+),([$\w]+)\)(?:.|\n){0,500}Skipping non-text file in @include(?:.|\n){0,500}\{path:[$\w]+,.{0,20}?content:[$\w]+/;
+    /(function ([$\w]+)\(([$\w]+),([^)]+?))\)(?:.|\n){0,500}Skipping non-text file in @include/;
 
   const funcMatch = file.match(funcPattern);
-
   if (!funcMatch || funcMatch.index === undefined) {
     console.error('patch: agentsMd: failed to find CLAUDE.md reading function');
     return null;
   }
-
-  const functionName = funcMatch[1];
-  const firstParam = funcMatch[2];
-  const secondParam = funcMatch[3];
+  const upToFuncParamsClosingParen = funcMatch[1];
+  const functionName = funcMatch[2];
+  const firstParam = funcMatch[3];
+  const restParams = funcMatch[4];
   const funcStart = funcMatch.index;
 
-  // Step 2: Find the fs expression used in the function
-  // Search within the matched region for fsVar.readFileSync etc. or fsVar().readFileSync etc.
   const fsPattern = /([$\w]+(?:\(\))?)\.(?:readFileSync|existsSync|statSync)/;
   const fsMatch = funcMatch[0].match(fsPattern);
-
   if (!fsMatch) {
     console.error('patch: agentsMd: failed to find fs expression in function');
     return null;
   }
-
   const fsExpr = fsMatch[1];
 
-  // Prepare the alternative names as JSON
   const altNamesJson = JSON.stringify(altNames);
 
-  // Build the injection code
-  const buildInjection = () =>
-    `if(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md")){for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(${fsExpr}.existsSync(altPath)&&${fsExpr}.statSync(altPath).isFile())return ${functionName}(altPath,${secondParam});}}return null;`;
+  // Step 1: Add didReroute parameter to function signature
+  const sigIndex = funcStart + upToFuncParamsClosingParen.length;
+  let newFile = file.slice(0, sigIndex) + ',didReroute' + file.slice(sigIndex);
 
-  // Step 3: Try the primary pattern (CC 2.1.29)
-  // Pattern: if(!fs.existsSync(path)||!fs.statSync(path).isFile())return null;
-  const primaryPattern =
-    /(if\(![$\w]+\.existsSync\([$\w]+\)\|\|![$\w]+\.statSync\([$\w]+\)\.isFile\(\)\))return null;/;
-  const primaryMatch = file.slice(funcStart).match(primaryPattern);
+  showDiff(file, newFile, ',didReroute', sigIndex, sigIndex);
 
-  if (primaryMatch && primaryMatch.index !== undefined) {
-    const injection = buildInjection();
-    const replacement = primaryMatch[1] + '{' + injection + '}';
+  // Step 2: Inject fallback logic
+  // Try new style first (CC >=2.1.63): ENOENT/EISDIR catch block
+  // Fall back to old style (CC <=2.1.62): early existsSync/isFile return null
+  const funcBody = newFile.slice(funcStart);
 
-    const startIndex = funcStart + primaryMatch.index;
-    const endIndex = startIndex + primaryMatch[0].length;
+  const enoentPattern = /===?"ENOENT"\|\|[$\w.]+===?"EISDIR"\)return null/;
+  const enoentMatch = funcBody.match(enoentPattern);
 
-    const newFile =
-      file.slice(0, startIndex) + replacement + file.slice(endIndex);
+  const earlyReturnPattern = /\.isFile\(\)\)return null/;
+  const earlyReturnMatch = funcBody.match(earlyReturnPattern);
 
-    showDiff(file, newFile, replacement, startIndex, endIndex);
+  if (enoentMatch && enoentMatch.index !== undefined) {
+    // New style: inject at ENOENT/EISDIR return null in catch block
+    const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){let _fs=${fsExpr};for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(_fs.existsSync(altPath)&&_fs.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
 
-    return newFile;
+    const matchStart = funcStart + enoentMatch.index;
+    const oldStr = enoentMatch[0];
+    const newStr = oldStr.replace(')return null', `){${fallback}return null;}`);
+
+    newFile =
+      newFile.slice(0, matchStart) +
+      newStr +
+      newFile.slice(matchStart + oldStr.length);
+
+    showDiff(file, newFile, newStr, matchStart, matchStart);
+  } else if (earlyReturnMatch && earlyReturnMatch.index !== undefined) {
+    // Old style: inject at existsSync/isFile early return null
+    const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(${fsExpr}.existsSync(altPath)&&${fsExpr}.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
+
+    const earlyReturnStart = funcStart + earlyReturnMatch.index;
+    const oldStr = earlyReturnMatch[0];
+    const newStr = `.isFile()){${fallback}return null;}`;
+
+    newFile =
+      newFile.slice(0, earlyReturnStart) +
+      newStr +
+      newFile.slice(earlyReturnStart + oldStr.length);
+
+    showDiff(file, newFile, newStr, earlyReturnStart, earlyReturnStart);
+  } else {
+    console.error(
+      'patch: agentsMd: failed to find injection point (no ENOENT catch or early return null)'
+    );
+    return null;
   }
 
-  // Step 4: Try the fallback pattern (uses }catch or }}catch)
-  // Pattern: }catch or }}catch
-  const fallbackPattern = /(\})(}catch)/;
-  const fallbackMatch = file.slice(funcStart).match(fallbackPattern);
-
-  if (fallbackMatch && fallbackMatch.index !== undefined) {
-    const injection = `else if(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md")){for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(${fsExpr}.existsSync(altPath)&&${fsExpr}.statSync(altPath).isFile())return ${functionName}(altPath,${secondParam});}}`;
-    const replacement = fallbackMatch[1] + injection + fallbackMatch[2];
-
-    const startIndex = funcStart + fallbackMatch.index;
-    const endIndex = startIndex + fallbackMatch[0].length;
-
-    const newFile =
-      file.slice(0, startIndex) + replacement + file.slice(endIndex);
-
-    showDiff(file, newFile, replacement, startIndex, endIndex);
-
-    return newFile;
-  }
-
-  console.error(
-    'patch: agentsMd: failed to find insertion point in function body'
-  );
-  return null;
+  return newFile;
 };

@@ -37,9 +37,13 @@ const findTweakccVersionLocation = (
   fileContents: string
 ): LocationResult | null => {
   // Find Claude Code version display
+  // Old pattern: React.createElement(Text,{bold:!0},"Claude Code")," ",React.createElement(Text,{dimColor:!0},"v",ver)
+  // New pattern (React compiler): createElement(E,{bold:!0},"Claude Code"),H[N]=y;...createElement(E,null,y," ",createElement(E,{dimColor:!0},"v",O))
   const pattern =
-    /\b([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
-  const match = fileContents.match(pattern);
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
+  const newPattern =
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),null,[$\w]+," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)\)/;
+  const match = fileContents.match(pattern) || fileContents.match(newPattern);
   if (!match || match.index === undefined) {
     console.error(
       'patch: patchesAppliedIndication: failed to find Claude Code version pattern'
@@ -94,7 +98,7 @@ const applyIndicatorViewPatch = (
 
   // 4. Find the LAST createElement call in that subsection to get the insertion point
   const createElementPattern =
-    /\b([$\w]+)\.createElement\(([$\w]+),(?:\w+|\{[^}]+\}),/g;
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),(?:\w+|\{[^}]+\}),/g;
   const matches = Array.from(lookbackSubstring.matchAll(createElementPattern));
   if (matches.length === 0) {
     console.error(
@@ -248,8 +252,10 @@ const findPatchesListLocation = (
 ): LocationResult | null => {
   // 1. Find the same regex as patch 2
   const pattern =
-    /\b([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
-  const match = fileContents.match(pattern);
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
+  const newPattern =
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),null,[$\w]+," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)\)/;
+  const match = fileContents.match(pattern) || fileContents.match(newPattern);
   if (!match || match.index === undefined) {
     console.error(
       'patch: patchesAppliedIndication: failed to find Claude Code version pattern for patch 3'
@@ -277,7 +283,7 @@ const findPatchesListLocation = (
 
   // 4. Search for the createElement call with the header component
   const createHeaderPattern = new RegExp(
-    `\\b([$\\w]+)\\.createElement\\(${escapeIdent(headerComponentName)},null\\),?`
+    `[^$\\w]([$\\w]+)\\.createElement\\(${escapeIdent(headerComponentName)},null\\),?`
   );
   const createHeaderMatch = fileContents.match(createHeaderPattern);
   if (!createHeaderMatch || createHeaderMatch.index === undefined) {

@@ -114,7 +114,6 @@ export const applySystemPrompts = async (
       // We look back to find the nearest quote or backtick that isn't escaped
       const matchIndex = match.index;
       let delimiter = '';
-      let delimiterIndex = -1;
       for (let i = matchIndex - 1; i >= 0 && i >= matchIndex - 20; i--) {
         const char = content[i];
         if (
@@ -122,7 +121,6 @@ export const applySystemPrompts = async (
           content[i - 1] !== '\\'
         ) {
           delimiter = char;
-          delimiterIndex = i;
           break;
         }
       }

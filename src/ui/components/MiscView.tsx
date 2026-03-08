@@ -79,6 +79,10 @@ export function MiscView({ onSubmit }: MiscViewProps) {
     suppressNativeInstallerWarning: false,
     filterScrollEscapeSequences: false,
     enableWorktreeMode: true,
+    disableBetaHeaders: false,
+    skipTrustDialog: true,
+    enableContextLimitOverride: false,
+    enableModelCustomizations: true,
   };
 
   const ensureMisc = () => {
@@ -220,6 +224,20 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.enableConversationTitle =
               !settings.misc!.enableConversationTitle;
+          });
+        },
+      },
+      {
+        id: 'enableModelCustomizations',
+        title: 'Enable model customizations (/model shows all models)',
+        description:
+          'Show all Claude models in /model menu, not just the latest 3. Disable to use Claude Code default model list.',
+        getValue: () => settings.misc?.enableModelCustomizations ?? true,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.enableModelCustomizations =
+              !settings.misc!.enableModelCustomizations;
           });
         },
       },
@@ -384,6 +402,20 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.enableWorktreeMode =
               !settings.misc!.enableWorktreeMode;
+          });
+        },
+      },
+      {
+        id: 'enableContextLimitOverride',
+        title: 'Override context limit',
+        description:
+          'Replaces the default model context limit with CLAUDE_CODE_CONTEXT_LIMIT env var. Must be exported manually before launching CC, or falls back to 200K.',
+        getValue: () => settings.misc?.enableContextLimitOverride ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.enableContextLimitOverride =
+              !settings.misc!.enableContextLimitOverride;
           });
         },
       },
@@ -565,6 +597,33 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.filterScrollEscapeSequences =
               !settings.misc!.filterScrollEscapeSequences;
+          });
+        },
+      },
+      {
+        id: 'skipTrustDialog',
+        title: 'Skip trust dialog',
+        description:
+          "Skip the 'Accessing workspace' trust dialog shown at startup.",
+        getValue: () => settings.misc?.skipTrustDialog ?? true,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.skipTrustDialog = !settings.misc!.skipTrustDialog;
+          });
+        },
+      },
+      {
+        id: 'disableBetaHeaders',
+        title: 'Disable beta headers',
+        description:
+          'Disable "anthropic-beta" headers for cleaner API requests (CLAUDE_CODE_DISABLE_BETAS=1) or add specific ones (CLAUDE_CODE_ADD_BETAS=mcp-servers-...).',
+        getValue: () => settings.misc?.disableBetaHeaders ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.disableBetaHeaders =
+              !settings.misc!.disableBetaHeaders;
           });
         },
       },

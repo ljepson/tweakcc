@@ -3,7 +3,7 @@ import { escapeIdent } from '.';
 export const findChalkVar = (fileContents: string): string | undefined => {
   // Find chalk variable using the counting method
   const chalkPattern =
-    /\b([$\w]+)(?:\.(?:cyan|gray|green|red|yellow|ansi256|bgAnsi256|bgHex|bgRgb|hex|rgb|bold|dim|inverse|italic|strikethrough|underline)\b)+\(/g;
+    /[^$\w]([$\w]+)(?:\.(?:cyan|gray|green|red|yellow|ansi256|bgAnsi256|bgHex|bgRgb|hex|rgb|bold|dim|inverse|italic|strikethrough|underline)\b)+\(/g;
   const chalkMatches = Array.from(fileContents.matchAll(chalkPattern));
 
   // Count occurrences of each variable
@@ -31,21 +31,30 @@ export const findChalkVar = (fileContents: string): string | undefined => {
 export const getModuleLoaderFunction = (
   fileContents: string
 ): string | undefined => {
-  // Native bundles: look for ,j=(H,$,A)=>{A=H!=null? pattern (module loader)
-  // This is distinct from other 3-param functions because of the H!=null check
+  // Native bundles: look for ,b=(H,$,A)=>{var L=H!=null&& pattern (module loader)
+  // Older: ,j=(H,$,A)=>{A=H!=null? (direct assignment to 3rd param)
+  // Newer: ,b=(H,$,A)=>{var L=H!=null&& (var declaration with typeof check)
   const nativeLoaderPattern =
-    /[,;]([$\w]+)=\([$\w]+,[$\w]+,[$\w]+\)=>\{[$\w]+=[$\w]+!=null\?/;
+    /[,;]([$\w]+)=\([$\w]+,[$\w]+,[$\w]+\)=>\{(?:[$\w]+=[$\w]+!=null\?|var [$\w]+=[$\w]+!=null)/;
   const nativeMatch = fileContents.slice(0, 2000).match(nativeLoaderPattern);
   if (nativeMatch) {
     return nativeMatch[1];
   }
 
   // NPM bundles: var T=(H,$,A)=>{ at the start
-  const firstChunk = fileContents.slice(0, 1000);
-  const pattern = /var ([$\w]+)=\([$\w]+,[$\w]+,[$\w]+\)=>\{/;
-  const match = firstChunk.match(pattern);
-  if (match) {
-    return match[1];
+  // In newer versions there are more than one, and the one with the shortest name
+  // is the most common one and therefore the correct one.
+  const firstChunk = fileContents.slice(0, 10000);
+  const pattern = /(?:var |,)([$\w]+)=\([$\w]+,[$\w]+,[$\w]+\)=>\{/g;
+  const matches = Array.from(firstChunk.matchAll(pattern));
+  if (matches.length > 0) {
+    let shortest = matches[0][1];
+    for (const m of matches) {
+      if (m[1].length < shortest.length) {
+        shortest = m[1];
+      }
+    }
+    return shortest;
   }
 
   console.log(
@@ -62,7 +71,7 @@ export const getReactModuleNameNonBun = (
 ): string | undefined => {
   // Pattern: var X=Y((Z)=>{var W=Symbol.for("react.element") or "react.transitional.element"
   const pattern =
-    /var ([$\w]+)=[$\w]+\(\([$\w]+\)=>\{var [$\w]+=Symbol\.for\("react\.(transitional\.)?element"\)/;
+    /var ([$\w]+)=[$\w]+\(\(([$\w]+)\)=>\{(?:var [$\w]+=Symbol\.for\("react\.(?:transitional\.)?element"\)|[$\w]+="react\.(?:transitional\.)?element")/;
   const match = fileContents.match(pattern);
   if (!match) {
     console.log(
@@ -100,9 +109,18 @@ export const getReactModuleFunctionBun = (
     return undefined;
   }
 
-  // Pattern: var X=Y((Z,W)=>{W.exports=reactModuleNameNonBun()
+  const moduleLoader = getModuleLoaderFunction(fileContents);
+  if (!moduleLoader) {
+    console.log(
+      '^ patch: getReactModuleFunctionBun: failed to find module loader'
+    );
+    return undefined;
+  }
+
+  // Pattern: var $H=S((as8,NsL)=>{NsL.exports=zsL()})  (two-param, exports assignment)
+  // Or: var X=K(()=>{NLI=moduleLoader(reactModuleBun(),1)})  (zero-param, loader call)
   const pattern = new RegExp(
-    `var ([$\\w]+)=[$\\w]+\\(\\([$\\w]+,[$\\w]+\\)=>\\{[$\\w]+\\.exports=${escapeIdent(reactModuleNameNonBun)}\\(\\)`
+    `(?:var |,|;|[^$\\w])([$\\w]+)=[$\\w]+\\(\\((?:[$\\w]+,[$\\w]+)?\\)=>\\{(?:[$\\w.]+\\.exports=|([$\\w]+)=${escapeIdent(moduleLoader)}\\()${escapeIdent(reactModuleNameNonBun)}\\(\\)`
   );
   const match = fileContents.match(pattern);
   if (!match) {
@@ -146,7 +164,7 @@ export const getReactVar = (fileContents: string): string | undefined => {
 
   // Pattern: X=moduleLoader(reactModule,1)
   const nonBunPattern = new RegExp(
-    `\\b([$\\w]+)=${escapeIdent(moduleLoader)}\\(${escapeIdent(reactModuleVarNonBun)}\\(\\),1\\)`
+    `[^$\\w]([$\\w]+)=${escapeIdent(moduleLoader)}\\(${escapeIdent(reactModuleVarNonBun)}\\(\\),1\\)`
   );
   const nonBunMatch = fileContents.match(nonBunPattern);
   if (nonBunMatch) {
@@ -163,10 +181,10 @@ export const getReactVar = (fileContents: string): string | undefined => {
     reactVarCache = undefined;
     return undefined;
   }
-  // \b([$\w]+)=T\(fH\(\),1\)
-  // Pattern: X=moduleLoader(reactModuleBun,1)
+  // ;([$\w]+)=T\(fH\(\),1\)
+  // Pattern: ;X=moduleLoader(reactModuleBun(),1)
   const bunPattern = new RegExp(
-    `\\b([$\\w]+)=${escapeIdent(moduleLoader)}\\(${escapeIdent(reactModuleFunctionBun)}\\(\\),1\\)`
+    `(?:var |,|;|[^$\\w])([$\\w]+)=${escapeIdent(moduleLoader)}\\(${escapeIdent(reactModuleFunctionBun)}\\(\\)(?:,[$\\w]+)*\\)`
   );
   const bunMatch = fileContents.match(bunPattern);
   if (!bunMatch) {
@@ -289,7 +307,11 @@ export const findTextComponent = (fileContents: string): string | undefined => {
   // function X({color:A,backgroundColor:B,dimColor:C=!1,bold:D=!1,...})
   const textComponentPattern =
     /\bfunction ([$\w]+).{0,20}color:[$\w]+,backgroundColor:[$\w]+,dimColor:[$\w]+(?:=![01])?,bold:[$\w]+(?:=![01])?/;
-  const match = fileContents.match(textComponentPattern);
+  const textComponentPatternNew =
+    /function ([$\w]+)\([$\w]+\)\{let [$\w]+=[$\w]+\.c\(\d+\),\{color:[$\w]+,backgroundColor:[$\w]+,dimColor:[$\w]+,bold:[$\w]+/;
+  const match =
+    fileContents.match(textComponentPattern) ||
+    fileContents.match(textComponentPatternNew);
   if (!match) {
     console.log('patch: findTextComponent: failed to find text component');
     return undefined;
@@ -303,7 +325,7 @@ export const findTextComponent = (fileContents: string): string | undefined => {
 export const findBoxComponent = (fileContents: string): string | undefined => {
   // Method 1: Find Box by ink-box createElement with local variable (CC ~2.0.x)
   const inkBoxPattern =
-    /function ([$\w]+)\(.{0,2000}\b([$\w]+)=[$\w]+(?:\.default)?\.createElement\("ink-box".{0,200}?return \2/;
+    /function ([$\w]+)\(.{0,2000}[^$\w]([$\w]+)=[$\w]+(?:\.default)?\.createElement\("ink-box".{0,200}?return \2/;
   const inkBoxMatch = fileContents.match(inkBoxPattern);
   if (inkBoxMatch) {
     return inkBoxMatch[1];
@@ -319,7 +341,7 @@ export const findBoxComponent = (fileContents: string): string | undefined => {
   }
 
   // Method 3: Search for Box displayName (older CC versions, 0.2.9 - 2.0.77 at least)
-  const boxDisplayNamePattern = /\b([$\w]+)\.displayName="Box"/;
+  const boxDisplayNamePattern = /[^$\w]([$\w]+)\.displayName="Box"/;
   const boxDisplayNameMatch = fileContents.match(boxDisplayNamePattern);
   if (boxDisplayNameMatch) {
     return boxDisplayNameMatch[1];

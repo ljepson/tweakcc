@@ -46,7 +46,7 @@ export const findDividerComponentName = (
   // Pattern matches the Divider component's function signature
   // TODO: this could be refactored to a single function that takes a list of params, and maybe even finds and returns the longest match.
   const dividerPattern =
-    /function ([$\w]+)(?:\([$\w]+\)\{let [$\w]+=[$\w]+\(\d+\),\{(?:(?:orientation|title|width|padding|titlePadding|titleColor|titleDimColor|dividerChar|dividerColor|dividerDimColor|boxProps):[$\w]+,?)+\}=|\(\{(?:(?:orientation|title|width|padding|titlePadding|titleColor|titleDimColor|dividerChar|dividerColor|dividerDimColor|boxProps):[$\w]+(?:=(?:[^,]+,|[^}]+\})|[,}]))+\))/g;
+    /function ([$\w]+)(?:\([$\w]+\)\{let [$\w]+=[$\w]+\.c\(\d+\),\{(?:(?:orientation|title|width|padding|titlePadding|titleColor|titleDimColor|dividerChar|dividerColor|dividerDimColor|boxProps):[$\w]+,?)+\}=|\(\{(?:(?:orientation|title|width|padding|titlePadding|titleColor|titleDimColor|dividerChar|dividerColor|dividerDimColor|boxProps):[$\w]+(?:=(?:[^,]+,|[^}]+\})|[,}]))+\))/g;
 
   const matches = Array.from(fileContents.matchAll(dividerPattern));
   if (matches.length === 0) {
@@ -76,7 +76,7 @@ export const getMainAppComponentBodyStart = (
   // Pattern matches the main app component function signature with all its props
   // Updated for 2.1.20: added initialAgentName, initialAgentColor, taskListId, remoteSessionConfig, autoTickIntervalMs
   const appComponentPattern =
-    /function ([$\w]+)\(\{(?:(?:commands|debug|initialPrompt|initialTools|initialMessages|initialCheckpoints|initialFileHistorySnapshots|initialAgentName|initialAgentColor|mcpClients|dynamicMcpConfig|mcpCliEndpoint|autoConnectIdeFlag|strictMcpConfig|systemPrompt|appendSystemPrompt|onBeforeQuery|onTurnComplete|disabled|mainThreadAgentDefinition|disableSlashCommands|taskListId|remoteSessionConfig|autoTickIntervalMs):[$\w]+(?:=(?:[^,]+,|[^}]+\})|[,}]))+\)/g;
+    /function ([$\w]+)\(\{(?:\w+:[$\w]+(?:=(?:[^,]+,|[^}]+\})|[,}]))+initialFileHistorySnapshots:[$\w]+,(?:\w+:[$\w]+(?:=(?:[^,]+,|[^}]+\})|[,}]))+\)/g;
 
   const allMatches = Array.from(fileContents.matchAll(appComponentPattern));
   // Filter to only matches that contain 'commands:' - unique to main app component
@@ -107,38 +107,6 @@ export const getMainAppComponentBodyStart = (
 };
 
 /**
- * Get app state variable and getter function names
- */
-export const getAppStateVarAndGetterFunction = (
-  fileContents: string
-): { appStateVar: string; appStateGetterFunction: string } | null => {
-  const bodyStart = getMainAppComponentBodyStart(fileContents);
-  if (bodyStart === null) {
-    console.error(
-      'patch: getAppStateVarAndGetterFunction: failed to find bodyStart'
-    );
-    return null;
-  }
-
-  // Look at the next 500 chars for the useState pattern (increased from 20 for 2.1.x)
-  const chunk = fileContents.slice(bodyStart, bodyStart + 500);
-  const statePattern = /let\[([$\w]+),[$\w]+\]=([$\w]+)\(\)/;
-  const match = chunk.match(statePattern);
-
-  if (!match) {
-    console.error(
-      'patch: getAppStateVarAndGetterFunction: failed to find statePattern'
-    );
-    return null;
-  }
-
-  return {
-    appStateVar: match[1],
-    appStateGetterFunction: match[2],
-  };
-};
-
-/**
  * Get app state selector and useState function names
  */
 export const getAppStateSelectorAndUseState = (
@@ -158,63 +126,6 @@ export const getAppStateSelectorAndUseState = (
   return {
     appStateUseSelectorFn: match[1],
     appStateSetState: match[2],
-  };
-};
-
-/**
- * Get the location and identifiers for the tool fetching useMemo
- */
-export const getToolFetchingUseMemoLocation = (
-  fileContents: string
-): {
-  startIndex: number;
-  endIndex: number;
-  outputVarName: string;
-  reactVarName: string;
-  toolFilterFunction: string;
-  toolPermissionContextVar: string;
-  needsSemicolonPrefix: boolean;
-} | null => {
-  const bodyStart = getMainAppComponentBodyStart(fileContents);
-  if (bodyStart === null) {
-    console.error(
-      'patch: getToolFetchingUseMemoLocation: failed to find bodyStart'
-    );
-    return null;
-  }
-
-  // Look at the next 2000 chars
-  const chunk = fileContents.slice(bodyStart, bodyStart + 2000);
-
-  // Pattern to match: outputVar=reactVar.useMemo(()=>filterFunc(contextVar),[contextVar])
-  // Or (CC 2.1.9+): outputVar=reactVar.useMemo(()=>filterFunc(contextVar),[contextVar,extraDep])
-  // Note: may be comma-separated (,v=...) or let-prefixed (let v=...)
-  const useMemoPattern =
-    /(?:let |,)([$\w]+)=([$\w]+)\.useMemo\(\(\)=>([$\w]+)\(([$\w]+)\),\[\4(?:,[$\w]+)?\]\)/;
-  const match = chunk.match(useMemoPattern);
-
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: getToolFetchingUseMemoLocation: failed to find useMemoPattern'
-    );
-    return null;
-  }
-
-  const absoluteStart = bodyStart + match.index;
-  const absoluteEnd = absoluteStart + match[0].length;
-
-  // Check if match started with comma (needs semicolon prefix in replacement)
-  const matchedText = match[0];
-  const needsSemicolonPrefix = matchedText.startsWith(',');
-
-  return {
-    startIndex: absoluteStart,
-    endIndex: absoluteEnd,
-    outputVarName: match[1],
-    reactVarName: match[2],
-    toolFilterFunction: match[3],
-    toolPermissionContextVar: match[4],
-    needsSemicolonPrefix,
   };
 };
 
@@ -652,7 +563,7 @@ export const appendToolsetToModeDisplay = (oldFile: string): string | null => {
   // Looking for: tl(Y).toLowerCase(), " on"
   // We want to change it to: tl(Y).toLowerCase(), " on: ", currentToolset || "undefined"
 
-  const modeDisplayPattern = /([$\w]+)\((\w+)\)\.toLowerCase\(\)," on"/;
+  const modeDisplayPattern = /([$\w]+)\(([$\w]+)\)\.toLowerCase\(\)," on"/;
   const match = oldFile.match(modeDisplayPattern);
 
   if (!match || match.index === undefined) {
@@ -668,7 +579,7 @@ export const appendToolsetToModeDisplay = (oldFile: string): string | null => {
   // Replace with the new pattern that includes toolset
   const oldText = match[0];
   // insertShiftTabAppStateVar provides the definition for currentToolset.
-  const newText = `${tlFunction}(${modeVar}).toLowerCase()," on [",currentToolset||"undefined","]"`;
+  const newText = `${tlFunction}(${modeVar}).toLowerCase(),currentToolset?\` on [\${currentToolset}]\`:""`;
 
   const newFile = oldFile.replace(oldText, newText);
 
@@ -710,7 +621,7 @@ export const appendToolsetToShortcutsDisplay = (
 
   // Replace with the new pattern that includes toolset
   const oldText = match[0];
-  const newText = `"? for shortcuts [",state.toolset||"undefined","]"`;
+  const newText = `currentToolset?\`? for shortcuts [\${currentToolset}]\`:"? for shortcuts"`;
 
   const newFile = oldFile.replace(oldText, newText);
   if (newFile === oldFile) {
@@ -822,58 +733,89 @@ export const addCurrentToolsetAtToolChangeComponentScope = (
 };
 
 /**
- * Find the mode change location in the code
- * Pattern: if(X==="acceptEdits")Y("auto-accept-mode");...mode:Z
- * Returns the index after the semicolon (insertion point) and the mode variable
+ * Find the mode change setState call in the code.
+ *
+ * Matches the pattern:
+ *   SETSTATE((VAR)=>({...VAR,toolPermissionContext:{...CONTEXT,mode:MODEVAR}}))
+ *
+ * inside a comma-expression like:
+ *   if(SETSTATE((...)),otherCall(...),flag) guard();
+ *
+ * Returns the full match, its position, and the captured variable names so we
+ * can replace the setState call with one that also updates toolset.
  */
-export const findModeChange = (
+export const findModeChangeSetState = (
   fileContents: string
-): { index: number; modeVar: string; setStateVar: string } | null => {
+): {
+  index: number;
+  length: number;
+  fullMatch: string;
+  setStateVar: string;
+  prevVar: string;
+  spreadVar: string;
+  contextVar: string;
+  modeVar: string;
+} | null => {
+  // Match: SETSTATE((PREV)=>({...PREV,toolPermissionContext:{...CTX,mode:MODE}}))
+  // Note: arrow param is parenthesized in minified output: (lA)=> not lA=>
   const pattern =
-    /if\(([$\w]+)\(\([$\w]+\)=>\(\{\.\.\.[$\w]+,toolPermissionContext.{0,200}?mode:([$\w]+)/;
+    /([$\w]+)\(\(([$\w]+)\)=>\(\{\.\.\.\2,toolPermissionContext:\{\.\.\.([$\w]+),mode:([$\w]+)\}\}\)\)/;
   const match = fileContents.match(pattern);
 
   if (!match || match.index === undefined) {
-    console.error('patch: findModeChange: failed to find mode change location');
+    console.error(
+      'patch: findModeChangeSetState: failed to find mode change setState'
+    );
     return null;
   }
 
   return {
     index: match.index,
-    modeVar: match[2],
-    // We can't get a setState ourselves because it's a hook that gets it and this code is not in
-    // the top-level component.But there's already an instantiation 600+ lines back (as of 2.1.31,
-    // and it's `h1 = h7()`), but even simpler, in newer versions they use in like the next line.
+    length: match[0].length,
+    fullMatch: match[0],
     setStateVar: match[1],
+    prevVar: match[2],
+    spreadVar: match[2],
+    contextVar: match[3],
+    modeVar: match[4],
   };
 };
 
 /**
- * Write the mode change toolset update code
- * This injects code before the mode change to automatically switch toolsets
+ * Write the mode change toolset update code.
+ *
+ * Replaces the original setState call with a single combined call that updates
+ * both toolPermissionContext.mode AND the toolset field atomically, avoiding
+ * the double-setState that breaks React's concurrent render pipeline.
+ *
+ * Before (two setState calls — causes plan mode stall):
+ *   setState(prev=>({...prev,toolset:"X"}));
+ *   if(setState(prev=>({...prev,toolPermissionContext:{...ctx,mode:m}})),...)
+ *
+ * After (single atomic setState):
+ *   if(setState(prev=>({...prev,toolset:m==="plan"?"PLAN":"DEFAULT",toolPermissionContext:{...ctx,mode:m}})),...)
  */
 export const writeModeChangeUpdateToolset = (
   oldFile: string,
   planModeToolset: string,
   defaultToolset: string
 ): string | null => {
-  const modeChangeResult = findModeChange(oldFile);
-  if (!modeChangeResult) {
+  const result = findModeChangeSetState(oldFile);
+  if (!result) {
     return null;
   }
 
-  const { index: modeChangeIndex, modeVar, setStateVar } = modeChangeResult;
+  const { index, length, setStateVar, prevVar, contextVar, modeVar } = result;
 
-  // Build the injection code using setState directly
-  const injectionCode = `if(${modeVar}==="plan"){${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(planModeToolset)}}));}else{${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(defaultToolset)}}));}`;
+  // Build a single setState that updates both toolset and toolPermissionContext
+  const toolsetExpr = `${modeVar}==="plan"?${JSON.stringify(planModeToolset)}:${JSON.stringify(defaultToolset)}`;
 
-  // Inject right before the mode change
+  const replacement = `${setStateVar}((${prevVar})=>({...${prevVar},toolset:${toolsetExpr},toolPermissionContext:{...${contextVar},mode:${modeVar}}}))`;
+
   const newFile =
-    oldFile.slice(0, modeChangeIndex) +
-    injectionCode +
-    oldFile.slice(modeChangeIndex);
+    oldFile.slice(0, index) + replacement + oldFile.slice(index + length);
 
-  showDiff(oldFile, newFile, injectionCode, modeChangeIndex, modeChangeIndex);
+  showDiff(oldFile, newFile, replacement, index, index + length);
 
   return newFile;
 };

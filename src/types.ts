@@ -131,6 +131,10 @@ export interface MiscConfig {
   suppressNativeInstallerWarning: boolean;
   filterScrollEscapeSequences: boolean;
   enableWorktreeMode: boolean;
+  disableBetaHeaders: boolean;
+  skipTrustDialog: boolean;
+  enableContextLimitOverride: boolean;
+  enableModelCustomizations: boolean;
 }
 
 export interface InputPatternHighlighter {

@@ -7,6 +7,55 @@ import * as crypto from 'crypto';
 import { Theme } from './types';
 import { CUSTOM_MODELS } from './patches/modelSelector';
 
+// ============================================================================
+// Linux immutable flag (chattr) utilities
+// ============================================================================
+
+export function hasImmutableFlag(filePath: string): boolean {
+  if (process.platform !== 'linux') return false;
+  try {
+    const output = child_process
+      .execSync(`lsattr -d ${JSON.stringify(filePath)} 2>/dev/null`, {
+        encoding: 'utf8',
+      })
+      .trim();
+    const attrs = output.split(/\s/)[0] || '';
+    return attrs.includes('i');
+  } catch {
+    return false;
+  }
+}
+
+export function clearImmutableFlag(filePath: string): boolean {
+  const quoted = JSON.stringify(filePath);
+  for (const cmd of [`sudo chattr -i ${quoted}`, `chattr -i ${quoted}`]) {
+    try {
+      child_process.execSync(cmd, { stdio: 'ignore' });
+      debug(`Cleared immutable flag on ${filePath}`);
+      return true;
+    } catch {
+      continue;
+    }
+  }
+  debug(`Failed to clear immutable flag on ${filePath}`);
+  return false;
+}
+
+export function setImmutableFlag(filePath: string): boolean {
+  const quoted = JSON.stringify(filePath);
+  for (const cmd of [`sudo chattr +i ${quoted}`, `chattr +i ${quoted}`]) {
+    try {
+      child_process.execSync(cmd, { stdio: 'ignore' });
+      debug(`Set immutable flag on ${filePath}`);
+      return true;
+    } catch {
+      continue;
+    }
+  }
+  debug(`Failed to set immutable flag on ${filePath}`);
+  return false;
+}
+
 let isDebugModeOn = false;
 let isVerboseModeOn = false;
 let isShowUnchangedOn = false;
@@ -336,7 +385,8 @@ export const buildChalkChain = (
 export async function replaceFileBreakingHardLinks(
   filePath: string,
   newContent: string | Buffer,
-  operation: string = 'replace'
+  operation: string = 'replace',
+  forceExecutable: boolean = false
 ): Promise<void> {
   // Get the original file's permissions before unlinking
   let originalMode = 0o755; // Default fallback
@@ -353,6 +403,16 @@ export async function replaceFileBreakingHardLinks(
     );
   }
 
+  const wasImmutable = hasImmutableFlag(filePath);
+  if (wasImmutable) {
+    const cleared = clearImmutableFlag(filePath);
+    if (!cleared) {
+      throw new Error(
+        `Cannot modify immutable file: ${filePath}. Run: sudo chattr -i ${JSON.stringify(filePath)}`
+      );
+    }
+  }
+
   // Unlink the file first to break any hard links
   try {
     await fs.unlink(filePath);
@@ -366,10 +426,15 @@ export async function replaceFileBreakingHardLinks(
   await fs.writeFile(filePath, newContent);
 
   // Restore the original permissions
-  await fs.chmod(filePath, originalMode);
+  const targetMode = forceExecutable ? originalMode | 0o111 : originalMode;
+  await fs.chmod(filePath, targetMode);
   debug(
-    `[${operation}] Restored permissions to ${(originalMode & parseInt('777', 8)).toString(8)}`
+    `[${operation}] Restored permissions to ${(targetMode & parseInt('777', 8)).toString(8)}`
   );
+
+  if (wasImmutable) {
+    setImmutableFlag(filePath);
+  }
 }
 
 export async function doesFileExist(filePath: string): Promise<boolean> {

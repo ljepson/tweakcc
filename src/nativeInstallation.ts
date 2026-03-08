@@ -5,7 +5,143 @@
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import LIEF from 'node-lief';
-import { isDebug, debug } from './utils';
+import {
+  isDebug,
+  debug,
+  hasImmutableFlag,
+  clearImmutableFlag,
+  setImmutableFlag,
+} from './utils';
+
+// ============================================================================
+// Nix binary wrapper detection
+// ============================================================================
+
+/**
+ * Maximum file size for a Nix binary wrapper. These are tiny compiled C
+ * programs (~5-20KB). Anything larger is definitely not a wrapper.
+ */
+const NIX_WRAPPER_MAX_SIZE = 200_000;
+
+/**
+ * Detects whether a binary is a Nix `makeBinaryWrapper` output and, if so,
+ * extracts the path to the real wrapped executable.
+ *
+ * Nix's `makeBinaryWrapper` generates a small C program that:
+ *   1. Manipulates the environment (setenv/unsetenv/putenv)
+ *   2. Calls `execv("/nix/store/.../real-binary", argv)`
+ *
+ * The wrapper always embeds a DOCSTRING in `.rodata` (ELF) or `__cstring`
+ * (Mach-O) containing the literal `makeCWrapper` invocation, whose first
+ * argument is the real executable path. This is a contractual part of the
+ * wrapper format (used by `makeBinaryWrapper.extractCmd`).
+ *
+ * Detection strategy:
+ *   1. Size gate: wrappers are tiny (<200KB), real Bun binaries are multi-MB
+ *   2. Symbol gate: wrappers import `execv`, real Bun apps do not
+ *   3. Parse the DOCSTRING: `makeCWrapper '/nix/store/.../real-binary' ...`
+ *   4. Fallback: find `/nix/store/` paths with `/bin/` in `.rodata`
+ *
+ * @returns The path to the real wrapped executable, or null if not a wrapper.
+ */
+export function resolveNixBinaryWrapper(binaryPath: string): string | null {
+  try {
+    // Gate 1: file size — wrappers are tiny
+    const stat = fs.statSync(binaryPath);
+    if (stat.size > NIX_WRAPPER_MAX_SIZE) {
+      return null;
+    }
+
+    LIEF.logging.disable();
+    const binary = LIEF.parse(binaryPath);
+
+    // Gate 2: must import execv — the hallmark of a makeBinaryWrapper
+    const symbols = binary.symbols();
+    const hasExecv = symbols.some(sym => {
+      const name = sym.name;
+      return name === 'execv' || name === '_execv';
+    });
+
+    if (!hasExecv) {
+      debug(
+        'resolveNixBinaryWrapper: no execv import found, not a Nix wrapper'
+      );
+      return null;
+    }
+
+    debug(
+      'resolveNixBinaryWrapper: execv import found, checking for Nix wrapper DOCSTRING'
+    );
+
+    // Extract string data from .rodata (ELF) or __TEXT,__cstring (Mach-O)
+    let rawBytes: Buffer | null = null;
+
+    if (binary.format === 'ELF') {
+      const rodata = binary.sections().find(s => s.name === '.rodata');
+      if (rodata) {
+        rawBytes = rodata.content;
+      }
+    } else if (binary.format === 'MachO') {
+      const machoBinary = binary as LIEF.MachO.Binary;
+      const textSeg = machoBinary.getSegment('__TEXT');
+      if (textSeg) {
+        const cstring = textSeg.getSection('__cstring');
+        if (cstring) {
+          rawBytes = cstring.content;
+        }
+      }
+    }
+
+    if (!rawBytes || rawBytes.length === 0) {
+      debug('resolveNixBinaryWrapper: could not read string section');
+      return null;
+    }
+
+    const text = rawBytes.toString('utf-8');
+
+    // Strategy 1: parse the DOCSTRING
+    // makeBinaryWrapper always embeds: makeCWrapper '/nix/store/.../real' ...
+    const docstringMatch = text.match(/makeCWrapper\s+'(\/nix\/store\/[^']+)'/);
+    if (docstringMatch) {
+      const resolvedPath = docstringMatch[1];
+      debug(
+        `resolveNixBinaryWrapper: found wrapped executable via DOCSTRING: ${resolvedPath}`
+      );
+      return resolvedPath;
+    }
+
+    // Also handle unquoted (shouldn't happen but defensive)
+    const unquotedMatch = text.match(/makeCWrapper\s+(\/nix\/store\/\S+)/);
+    if (unquotedMatch) {
+      const resolvedPath = unquotedMatch[1];
+      debug(
+        `resolveNixBinaryWrapper: found wrapped executable via unquoted DOCSTRING: ${resolvedPath}`
+      );
+      return resolvedPath;
+    }
+
+    // Strategy 2: find /nix/store/ paths in the string table
+    // The execv target is the one that points to an executable (contains /bin/)
+    // as opposed to env var values (--prefix PATH) which point to directories.
+    const nixPaths = text.match(/\/nix\/store\/[^\0\n\r]+/g);
+    if (nixPaths) {
+      for (const p of nixPaths) {
+        if (p.includes('/bin/')) {
+          debug(
+            `resolveNixBinaryWrapper: found wrapped executable via /bin/ heuristic: ${p}`
+          );
+          return p;
+        }
+      }
+    }
+
+    debug('resolveNixBinaryWrapper: has execv but no Nix store paths found');
+    return null;
+  } catch (error) {
+    debug('resolveNixBinaryWrapper: error during detection:', error);
+    return null;
+  }
+}
 
 /**
  * Constants for Bun trailer and serialized layout sizes.
@@ -67,6 +203,10 @@ interface BunData {
   moduleStructSize: number;
 }
 
+function executableMode(mode: number): number {
+  return mode | 0o111;
+}
+
 /**
  * Read a StringPointer slice from given buffer.
  */
@@ -95,7 +235,9 @@ function isClaudeModule(moduleName: string): boolean {
     moduleName.endsWith('/claude') ||
     moduleName === 'claude' ||
     moduleName.endsWith('/claude.exe') ||
-    moduleName === 'claude.exe'
+    moduleName === 'claude.exe' ||
+    moduleName.endsWith('/src/entrypoints/cli.js') ||
+    moduleName === 'src/entrypoints/cli.js'
   );
 }
 
@@ -505,6 +647,11 @@ function getBunData(binary: LIEF.Abstract.Binary): BunData {
 /**
  * Extracts claude.js from a native installation binary.
  * Returns the contents as a Buffer, or null if not found.
+ *
+ * Note: If the binary might be a Nix `makeBinaryWrapper` wrapper, callers
+ * should resolve it first using `resolveNixBinaryWrapper()` and pass the
+ * real binary path here. This is handled at detection time in
+ * `installationDetection.ts`.
  */
 export function extractClaudeJsFromNativeInstallation(
   nativeInstallationPath: string
@@ -591,14 +738,26 @@ function rebuildBunData(
 
     // Check if this is claude.js and we have modified contents
     let contentsBytes: Buffer;
+    let bytecodeBytes: Buffer;
     if (modifiedClaudeJs && isClaudeModule(moduleName)) {
-      contentsBytes = modifiedClaudeJs;
+      // Strip @bytecode tag so Bun parses JS source instead of stale bytecode
+      const header = modifiedClaudeJs.subarray(0, 64).toString('utf8');
+      if (header.includes('@bytecode')) {
+        const str = modifiedClaudeJs.toString('utf8');
+        contentsBytes = Buffer.from(
+          str.replace(/\/\/ @bun @bytecode (@bun-cjs)/, '// @bun $1')
+        );
+      } else {
+        contentsBytes = modifiedClaudeJs;
+      }
+      // Zero out bytecode since it no longer matches the patched source
+      bytecodeBytes = Buffer.alloc(0);
     } else {
       contentsBytes = getStringPointerContent(bunData, module.contents);
+      bytecodeBytes = getStringPointerContent(bunData, module.bytecode);
     }
 
     const sourcemapBytes = getStringPointerContent(bunData, module.sourcemap);
-    const bytecodeBytes = getStringPointerContent(bunData, module.bytecode);
     const moduleInfoBytes = getStringPointerContent(bunData, module.moduleInfo);
     const bytecodeOriginPathBytes = getStringPointerContent(
       bunData,
@@ -807,7 +966,24 @@ function atomicWriteBinary(
 
   if (copyPermissions) {
     const origStat = fs.statSync(originalPath);
-    fs.chmodSync(tempPath, origStat.mode);
+    fs.chmodSync(tempPath, executableMode(origStat.mode));
+  }
+
+  const wasImmutable = hasImmutableFlag(outputPath);
+  if (wasImmutable) {
+    const cleared = clearImmutableFlag(outputPath);
+    if (!cleared) {
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch {
+        // Do nothing
+      }
+      throw new Error(
+        `Cannot modify immutable file: ${outputPath}. Run: sudo chattr -i ${JSON.stringify(outputPath)}`
+      );
+    }
   }
 
   try {
@@ -837,6 +1013,10 @@ function atomicWriteBinary(
     }
 
     throw error;
+  }
+
+  if (wasImmutable) {
+    setImmutableFlag(outputPath);
   }
 }
 
@@ -1011,21 +1191,84 @@ function repackELF(
   outputPath: string
 ): void {
   try {
+    // CRITICAL: Do NOT use LIEF's binary.write() for ELF binaries.
+    // LIEF rewrites the entire ELF from scratch, modifying .dynsym and other
+    // sections in ways that break Bun's embedded module loader. Instead,
+    // directly splice the new overlay onto the original ELF using raw I/O.
+    // The overlay starts immediately after the last ELF content.
+    const originalSize = fs.statSync(binPath).size;
+    const originalOverlaySize = elfBinary.overlay.length;
+    const overlayStart = originalSize - originalOverlaySize;
+
     // Build new overlay: [bunData][totalByteCount (8 bytes)]
-    // Note: newBunBuffer already includes offsets and trailer
+    // Note: newBunBuffer already includes offsets and trailer.
+    // The tail u64 must be the total file size (ELF + overlay), matching
+    // the original binary's convention used by Bun at runtime.
     const newOverlay = Buffer.allocUnsafe(newBunBuffer.length + 8);
     newBunBuffer.copy(newOverlay, 0);
-    newOverlay.writeBigUInt64LE(
-      BigInt(newBunBuffer.length),
-      newBunBuffer.length
-    );
+    const newTotalFileSize = BigInt(overlayStart + newOverlay.length);
+    newOverlay.writeBigUInt64LE(newTotalFileSize, newBunBuffer.length);
 
     debug(`repackELF: Setting overlay data (${newOverlay.length} bytes)`);
 
-    elfBinary.overlay = newOverlay;
-    debug(`repackELF: Writing modified binary to ${outputPath}...`);
+    debug(
+      `repackELF: Original file size=${originalSize}, overlay size=${originalOverlaySize}, overlay starts at=${overlayStart}`
+    );
 
-    atomicWriteBinary(elfBinary, outputPath, binPath);
+    // Copy original ELF (everything before the overlay) + append new overlay
+    const tempPath = outputPath + '.tmp';
+    fs.copyFileSync(binPath, tempPath);
+    fs.chmodSync(tempPath, 0o755);
+    fs.truncateSync(tempPath, overlayStart);
+    fs.appendFileSync(tempPath, newOverlay);
+
+    // Copy permissions from original
+    const origStat = fs.statSync(binPath);
+    fs.chmodSync(tempPath, executableMode(origStat.mode));
+
+    // Atomic rename
+    const wasImmutable = hasImmutableFlag(outputPath);
+    if (wasImmutable) {
+      const cleared = clearImmutableFlag(outputPath);
+      if (!cleared) {
+        try {
+          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        } catch {
+          // Do nothing
+        }
+        throw new Error(
+          `Cannot modify immutable file: ${outputPath}. Run: sudo chattr -i ${JSON.stringify(outputPath)}`
+        );
+      }
+    }
+
+    try {
+      fs.renameSync(tempPath, outputPath);
+    } catch (error) {
+      try {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        (error.code === 'ETXTBSY' ||
+          error.code === 'EBUSY' ||
+          error.code === 'EPERM')
+      ) {
+        throw new Error(
+          'Cannot update the Claude executable while it is running.\n' +
+            'Please close all Claude instances and try again.'
+        );
+      }
+      throw error;
+    }
+
+    if (wasImmutable) {
+      setImmutableFlag(outputPath);
+    }
+
     debug('repackELF: Write completed successfully');
   } catch (error) {
     console.error('repackELF failed:', error);
@@ -1035,6 +1278,13 @@ function repackELF(
 
 /**
  * Repacks a modified claude.js back into the native installation binary.
+ *
+ * Note: If the binary might be a Nix `makeBinaryWrapper` wrapper, callers
+ * should resolve it first using `resolveNixBinaryWrapper()` and pass the
+ * real binary path here. This is handled at detection time in
+ * `installationDetection.ts`, so `nativeInstallationPath` should already
+ * point to the real binary.
+ *
  * @param binPath - Path to the original native installation binary
  * @param modifiedClaudeJs - Modified claude.js contents as a Buffer
  * @param outputPath - Where to write the repacked binary

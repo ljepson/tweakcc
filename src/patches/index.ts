@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import {
   CONFIG_DIR,
   NATIVE_BINARY_BACKUP_FILE,
+  ensureConfigDir,
   updateConfigFile,
 } from '../config';
 import { ClaudeCodeInstallationInfo, TweakccConfig } from '../types';
@@ -52,6 +53,7 @@ import { writeFixLspSupport } from './fixLspSupport';
 import { writeToolsets } from './toolsets';
 import { writeTableFormat } from './tableFormat';
 import { writeConversationTitle } from './conversationTitle';
+import { writeDisableBetaHeaders } from './disableBetaHeaders';
 import { writeHideStartupBanner } from './hideStartupBanner';
 import { writeHideCtrlGToEdit } from './hideCtrlGToEdit';
 import { writeHideStartupClawd } from './hideStartupClawd';
@@ -68,6 +70,7 @@ import { writeAgentsMd } from './agentsMd';
 import { writeAutoAcceptPlanMode } from './autoAcceptPlanMode';
 import { writeAllowBypassPermsInSudo } from './allowBypassPermsInSudo';
 import { writeSuppressNativeInstallerWarning } from './suppressNativeInstallerWarning';
+import { writeSkipTrustDialog } from './skipTrustDialog';
 import { writeScrollEscapeSequenceFilter } from './scrollEscapeSequenceFilter';
 import { writeWorktreeMode } from './worktreeMode';
 import {
@@ -147,30 +150,11 @@ const PATCH_DEFINITIONS = [
     description: 'Token counter will show (2s · ↓ 169 tokens · thinking)',
   },
   {
-    id: 'context-limit',
-    name: 'Context limit',
-    group: PatchGroup.ALWAYS_APPLIED,
-    description:
-      'Set the CLAUDE_CODE_CONTEXT_LIMIT env var to change 200k max for custom models',
-  },
-  {
-    id: 'model-customizations',
-    name: 'Model customizations',
-    group: PatchGroup.ALWAYS_APPLIED,
-    description: 'Access all Claude models with /model, not just latest 3',
-  },
-  {
     id: 'opusplan1m',
     name: 'Opusplan[1m] support',
     group: PatchGroup.ALWAYS_APPLIED,
     description:
       'Use the "Opus Plan 1M" model: Opus for planning, Sonnet 1M context for building',
-  },
-  {
-    id: 'show-more-items-in-select-menus',
-    name: 'Show more items in select menus',
-    group: PatchGroup.ALWAYS_APPLIED,
-    description: 'Show 25 items in select menus instead of default 5',
   },
   {
     id: 'thinking-block-styling',
@@ -191,6 +175,25 @@ const PATCH_DEFINITIONS = [
     description: `Statusline updates will be properly throttled instead of queued (or debounced)`,
   },
   // Misc Configurable
+  {
+    id: 'model-customizations',
+    name: 'Model customizations',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description: 'Access all Claude models with /model, not just latest 3',
+  },
+  {
+    id: 'show-more-items-in-select-menus',
+    name: 'Show more items in select menus',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description: 'Show 25 items in select menus instead of default 5',
+  },
+  {
+    id: 'context-limit',
+    name: 'Context limit',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description:
+      'Override the 200K context limit via CLAUDE_CODE_CONTEXT_LIMIT env var (set before launching CC)',
+  },
   {
     id: 'patches-applied-indication',
     name: 'Patches applied indication',
@@ -349,6 +352,12 @@ const PATCH_DEFINITIONS = [
     description: 'Suppress the native installer warning message at startup',
   },
   {
+    id: 'skip-trust-dialog',
+    name: 'Skip trust dialog',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description: "Skip the 'Accessing workspace' trust dialog shown at startup",
+  },
+  {
     id: 'filter-scroll-escape-sequences',
     name: 'Filter scroll escape sequences',
     group: PatchGroup.MISC_CONFIGURABLE,
@@ -399,6 +408,13 @@ const PATCH_DEFINITIONS = [
     name: 'Input pattern highlighters',
     group: PatchGroup.FEATURES,
     description: 'Custom input highlighters will be registered',
+  },
+  {
+    id: 'disable-beta-headers',
+    name: 'Disable beta headers',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description:
+      'Disable "anthropic-beta" headers (like prompt-caching) for cleaner API requests',
   },
   {
     id: 'conversation-title',
@@ -522,6 +538,8 @@ export const applyCustomization = async (
   ccInstInfo: ClaudeCodeInstallationInfo,
   patchFilter?: string[] | null
 ): Promise<ApplyCustomizationResult> => {
+  await ensureConfigDir();
+
   let content: string;
 
   if (ccInstInfo.nativeInstallationPath) {
@@ -605,6 +623,10 @@ export const applyCustomization = async (
   // ==========================================================================
   // Define patch implementations (keyed by PatchId)
   // ==========================================================================
+  // Keep model list customization and select-menu size behavior in sync.
+  // Disabling model customizations should restore both selectors to vanilla CC behavior.
+  const modelCustomizationsEnabled =
+    config.settings.misc?.enableModelCustomizations ?? true;
   const patchImplementations: Record<PatchId, PatchImplementation> = {
     // Always Applied
     'verbose-property': {
@@ -612,15 +634,10 @@ export const applyCustomization = async (
     },
     'context-limit': {
       fn: c => writeContextLimit(c),
-    },
-    'model-customizations': {
-      fn: c => writeModelCustomizations(c),
+      condition: !!config.settings.misc?.enableContextLimitOverride,
     },
     opusplan1m: {
       fn: c => writeOpusplan1m(c),
-    },
-    'show-more-items-in-select-menus': {
-      fn: c => writeShowMoreItemsInSelectMenus(c, 25),
     },
     'thinking-block-styling': {
       fn: c => writeThinkingBlockStyling(c),
@@ -645,11 +662,19 @@ export const applyCustomization = async (
       fn: c =>
         writePatchesAppliedIndication(
           c,
-          '4.0.3',
+          '4.0.11',
           legacyItems,
           showTweakccVersion,
           showPatchesApplied
         ),
+    },
+    'model-customizations': {
+      fn: c => writeModelCustomizations(c),
+      condition: modelCustomizationsEnabled,
+    },
+    'show-more-items-in-select-menus': {
+      fn: c => writeShowMoreItemsInSelectMenus(c, 25),
+      condition: modelCustomizationsEnabled,
     },
     'table-format': {
       fn: c => writeTableFormat(c, tableFormat),
@@ -781,6 +806,10 @@ export const applyCustomization = async (
       fn: c => writeSuppressNativeInstallerWarning(c),
       condition: !!config.settings.misc?.suppressNativeInstallerWarning,
     },
+    'skip-trust-dialog': {
+      fn: c => writeSkipTrustDialog(c),
+      condition: config.settings.misc?.skipTrustDialog !== false,
+    },
     'filter-scroll-escape-sequences': {
       fn: c => writeScrollEscapeSequenceFilter(c),
       condition: !!config.settings.misc?.filterScrollEscapeSequences,
@@ -788,7 +817,10 @@ export const applyCustomization = async (
     // Features
     'worktree-mode': {
       fn: c => writeWorktreeMode(c),
-      condition: !!config.settings.misc?.enableWorktreeMode,
+      condition:
+        !!config.settings.misc?.enableWorktreeMode &&
+        !!ccInstInfo.version &&
+        compareVersions(ccInstInfo.version, '2.1.51') < 0,
     },
     'session-memory': {
       fn: c => writeSessionMemory(c),
@@ -828,6 +860,10 @@ export const applyCustomization = async (
         config.settings.inputPatternHighlighters &&
         config.settings.inputPatternHighlighters.length > 0
       ),
+    },
+    'disable-beta-headers': {
+      fn: c => writeDisableBetaHeaders(c),
+      condition: !!config.settings.misc?.disableBetaHeaders,
     },
     'conversation-title': {
       fn: c => writeConversationTitle(c),

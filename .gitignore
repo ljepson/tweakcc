@@ -42,3 +42,6 @@ debug.log
 *.temp
 
 *.tsbuildinfo
+INSTALL.md
+USAGE.md
+repomix-output.xml

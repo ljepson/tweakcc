@@ -85,9 +85,9 @@ const patchPastSessions = (file: string): string | null => {
     return newFile;
   }
 
-  // Fall back to old pattern (CC ≤2.1.37): negative guard with early return
+  // Fall back to old pattern (CC ≤2.1.37, CC ≥2.1.69): negative guard with early return
   const oldPattern =
-    /if\(![$\w]+\("tengu_coral_fern",!1\)\)return(?:null|\[\]);/;
+    /if\(![$\w]+\("tengu_coral_fern",!1\)\)return\s*(?:null|\[\]);/;
   const oldMatch = file.match(oldPattern);
 
   if (oldMatch && oldMatch.index !== undefined) {

@@ -86,8 +86,14 @@ export const writeAgentsMd = (
   const enoentPattern = /===?"ENOENT"\|\|[$\w.]+===?"EISDIR"\)return null/;
   const enoentMatch = funcBody.match(enoentPattern);
 
-  const earlyReturnPattern = /\.isFile\(\)\)return null/;
-  const earlyReturnMatch = funcBody.match(earlyReturnPattern);
+  // CC ≤2.1.62: existsSync/isFile check before reading
+  const oldEarlyReturnPattern = /\.isFile\(\)\)return null/;
+  // CC ≥2.1.69: try/catch with ENOENT/EISDIR error codes
+  const newEarlyReturnPattern = /==="EISDIR"\)return null/;
+
+  const earlyReturnMatch =
+    funcBody.match(oldEarlyReturnPattern) ??
+    funcBody.match(newEarlyReturnPattern);
 
   if (enoentMatch && enoentMatch.index !== undefined) {
     // New style: inject at ENOENT/EISDIR return null in catch block

@@ -31,7 +31,7 @@ function getThemesLocation(oldFile: string): {
       themePickerAnchor + 2500
     );
     const match = themePickerSlice.match(
-      /\[(?:\.{3}\[\],)?(?:\{label:"(?:Dark|Light).+?",value:".+?"\},?)+\]/
+      /\[(?:\.{3}\[\],)?(?:\{label:"(?:Dark|Light|Auto)[^"]*",value:"[^"]+"\},?)+\]/
     );
     if (match && match.index !== undefined) {
       objArrMatch = match;
@@ -47,7 +47,7 @@ function getThemesLocation(oldFile: string): {
       settingsThemeAnchor + 800
     );
     const match = settingsThemeSlice.match(
-      /return\{(?:[$\w-]+?:"(?:Auto|Dark|Light).+?",?)+\}/
+      /return\{(?:(?:[$\w]+|"[^"]+"):"(?:Auto|Dark|Light)[^"]*",?)+\}/
     );
     if (match && match.index !== undefined) {
       objMatch = match;

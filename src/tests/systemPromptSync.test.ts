@@ -607,6 +607,45 @@ Content here`;
       expect(result.content).toBe(content);
       expect(result.renames).toHaveLength(0);
     });
+
+    it('should resolve UNKNOWN_X placeholders using identifierMap', () => {
+      const content =
+        'Use ${UNKNOWN_3.agentType} with ${UNKNOWN_4} agents and ${EDIT_TOOL}';
+      const result = promptSync.renameIdentifiersInContent(
+        content,
+        ['EDIT_TOOL', 'WRITE_TOOL'],
+        [
+          'EDIT_TOOL',
+          'WRITE_TOOL',
+          'EXPLORE_SUBAGENT',
+          'PLAN_V2_EXPLORE_AGENT_COUNT',
+        ],
+        {
+          '0': 'EDIT_TOOL',
+          '2': 'WRITE_TOOL',
+          '3': 'EXPLORE_SUBAGENT',
+          '4': 'PLAN_V2_EXPLORE_AGENT_COUNT',
+        }
+      );
+      expect(result.content).toBe(
+        'Use ${EXPLORE_SUBAGENT.agentType} with ${PLAN_V2_EXPLORE_AGENT_COUNT} agents and ${EDIT_TOOL}'
+      );
+      expect(result.renames).toEqual([
+        ['UNKNOWN_3', 'EXPLORE_SUBAGENT'],
+        ['UNKNOWN_4', 'PLAN_V2_EXPLORE_AGENT_COUNT'],
+      ]);
+    });
+
+    it('should not touch UNKNOWN_X when identifierMap has no mapping', () => {
+      const content = 'Use ${UNKNOWN_99}';
+      const result = promptSync.renameIdentifiersInContent(
+        content,
+        [],
+        ['EDIT_TOOL'],
+        { '0': 'EDIT_TOOL' }
+      );
+      expect(result.content).toBe('Use ${UNKNOWN_99}');
+    });
   });
 
   describe('updateVariables', () => {

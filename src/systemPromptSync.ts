@@ -400,7 +400,8 @@ export const pairRenamedIdentifiers = (
 export const renameIdentifiersInContent = (
   content: string,
   oldVariables: string[],
-  newVariables: string[]
+  newVariables: string[],
+  newIdentifierMap?: Record<string, string>
 ): { content: string; renames: Array<[string, string]> } => {
   const oldSet = new Set(oldVariables);
   const newSet = new Set(newVariables);
@@ -409,17 +410,39 @@ export const renameIdentifiersInContent = (
   const added = newVariables.filter(v => !oldSet.has(v));
 
   const pairs = pairRenamedIdentifiers(removed, added);
-  if (pairs.length === 0) return { content, renames: [] };
+
+  // Resolve UNKNOWN_X placeholders using the identifierMap. These appear when
+  // a prompt was synced against a CC version whose identifierMap was missing
+  // entries. E.g. UNKNOWN_3 → EXPLORE_SUBAGENT when key "3" now exists.
+  const unknownPairs: Array<[string, string]> = [];
+  if (newIdentifierMap) {
+    const unknownPattern = /\bUNKNOWN_(\d+)\b/g;
+    const seen = new Set<string>();
+    let m;
+    while ((m = unknownPattern.exec(content)) !== null) {
+      const placeholder = m[0];
+      const index = m[1];
+      if (seen.has(placeholder)) continue;
+      seen.add(placeholder);
+      const realName = newIdentifierMap[index];
+      if (realName) {
+        unknownPairs.push([placeholder, realName]);
+      }
+    }
+  }
+
+  const allPairs = [...pairs, ...unknownPairs];
+  if (allPairs.length === 0) return { content, renames: [] };
 
   let result = content;
-  const sortedPairs = [...pairs].sort((a, b) => b[0].length - a[0].length);
+  const sortedPairs = [...allPairs].sort((a, b) => b[0].length - a[0].length);
 
   for (const [oldName, newName] of sortedPairs) {
     const pattern = new RegExp(`\\b${oldName}\\b`, 'g');
     result = result.replace(pattern, newName);
   }
 
-  return { content: result, renames: pairs };
+  return { content: result, renames: allPairs };
 };
 
 // ====== Variable Management ======
@@ -448,7 +471,8 @@ export const updateVariables = async (
   const { content: updatedContent, renames } = renameIdentifiersInContent(
     parsed.content,
     oldVariables,
-    newVariables
+    newVariables,
+    newIdentifierMap
   );
 
   const updatedData: Record<string, string | string[]> = {
@@ -1392,6 +1416,18 @@ const applyIdentifierMapping = (
       if (!(legacyName in reverseMap)) {
         reverseMap[legacyName] = actualVar;
       }
+    }
+  }
+
+  // Map UNKNOWN_X placeholders to actual variables. These appear when a prompt
+  // was synced against an older CC version whose identifierMap was missing some
+  // entries. The current identifierMap has them, so resolve them now.
+  for (let i = 0; i < identifiers.length; i++) {
+    const labelIndex = String(identifiers[i]);
+    const humanName = identifierMap[labelIndex];
+    const unknownName = `UNKNOWN_${labelIndex}`;
+    if (humanName && reverseMap[humanName] && !(unknownName in reverseMap)) {
+      reverseMap[unknownName] = reverseMap[humanName];
     }
   }
 

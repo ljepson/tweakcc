@@ -147,18 +147,29 @@ export const writeUserMessageDisplay = (
   const pattern =
     /(No content found in user prompt message.{0,150}?\b)([$\w]+(?:\.default)?\.createElement.{0,30}\b[$\w]+(?:\.default)?\.createElement.{0,40}">.+?)?(([$\w]+(?:\.default)?\.createElement).{0,100})(\([$\w]+,(?:\{[^{}]+wrap:"wrap"\},([$\w]+)(?:\.trim\(\))?\)\)|\{text:([$\w]+)(?:,thinkingMetadata:[$\w]+)?\}\)\)?))/;
 
-  const match = oldFile.match(pattern);
+  let match = oldFile.match(pattern);
+  let createElementFn: string;
+  let messageVar: string;
 
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: userMessageDisplay: failed to find user message display pattern'
-    );
-    return null;
+  if (match && match.index !== undefined) {
+    createElementFn = match[4];
+    messageVar = match[6] ?? match[7];
+  } else {
+    // CC 2.1.76+: createElement(Box,{...},createElement(SubComp,{text:VAR,...}))
+    const pattern2 =
+      /(No content found in user prompt message.{0,20}null;return )([$\w]+(?:\.default)?\.createElement)\([$\w]+,\{[^}]+\},\2\([$\w]+,\{text:([$\w]+)[^}]*\}\)\)/;
+    match = oldFile.match(pattern2);
+
+    if (!match || match.index === undefined) {
+      console.error(
+        'patch: userMessageDisplay: failed to find user message display pattern'
+      );
+      return null;
+    }
+
+    createElementFn = match[2];
+    messageVar = match[3];
   }
-
-  const createElementFn = match[4];
-  // Either match[6] or match[7] will be present (never both)
-  const messageVar = match[6] ?? match[7];
 
   // Build box attributes (border and padding)
   const boxAttrs: string[] = [];

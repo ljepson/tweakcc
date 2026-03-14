@@ -56,6 +56,11 @@ export const writeAgentsMd = (
     console.error('patch: agentsMd: failed to find CLAUDE.md reading function');
     return null;
   }
+
+  // CC 2.1.76+ natively includes didReroute and AGENTS.md rerouting
+  if (funcMatch[0].includes('didReroute')) {
+    return file;
+  }
   const upToFuncParamsClosingParen = funcMatch[1];
   const functionName = funcMatch[2];
   const firstParam = funcMatch[3];

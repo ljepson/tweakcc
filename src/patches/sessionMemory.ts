@@ -40,6 +40,10 @@ const patchExtraction = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
+    // CC 2.1.76+ ships with return true; before the gate — already always-on
+    if (/return true;return [$\w]+\("tengu_session_memory"/.test(file)) {
+      return file;
+    }
     console.error('patch: sessionMemory: failed to find extraction gate');
     return null;
   }

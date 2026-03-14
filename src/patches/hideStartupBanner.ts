@@ -9,6 +9,7 @@ const getStartupBannerLocation = (oldFile: string): LocationResult | null => {
   const match = oldFile.match(pattern);
 
   if (!match || match.index === undefined) {
+    if (!oldFile.includes('isBeforeFirstMessage')) return null;
     console.error(
       'patch: hideStartupBanner: failed to find startup banner createElement'
     );

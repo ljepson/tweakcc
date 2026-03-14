@@ -293,6 +293,14 @@ const patchAlwaysShowInModelSelector = (oldFile: string): string | null => {
  * Main entry point: Apply all opusplan[1m] patches
  */
 export const writeOpusplan1m = (oldFile: string): string | null => {
+  // CC 2.1.76+ natively supports opusplan[1m]
+  if (
+    oldFile.includes('"opusplan[1m]"') &&
+    oldFile.includes('Opus Plan Mode 1M')
+  ) {
+    return oldFile;
+  }
+
   let newFile = oldFile;
 
   // Patch 1: Mode switching function

@@ -99,6 +99,11 @@ const getOpenDocumentLocation = (oldFile: string): LocationResult | null => {
 };
 
 export const writeFixLspSupport = (oldFile: string): string | null => {
+  // CC 2.1.76+ removed LSP support entirely
+  if (!oldFile.includes('ensureServerStarted')) {
+    return oldFile;
+  }
+
   // Patch 1: Comment out the validation by replacing with nothing
   const validationPattern1 =
     /if\([$\w]+\.restartOnCrash!==void 0\)throw Error\(`LSP server '\$\{[$\w]+\}': restartOnCrash is not yet implemented\. Remove this field from the configuration\.`\);/g;

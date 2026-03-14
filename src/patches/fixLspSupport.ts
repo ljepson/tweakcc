@@ -100,7 +100,7 @@ const getOpenDocumentLocation = (oldFile: string): LocationResult | null => {
 
 export const writeFixLspSupport = (oldFile: string): string | null => {
   // CC 2.1.76+ removed LSP support entirely
-  if (!oldFile.includes('ensureServerStarted')) {
+  if (!oldFile.includes('"lsp"')) {
     return oldFile;
   }
 

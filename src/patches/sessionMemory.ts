@@ -128,6 +128,10 @@ const patchTokenLimits = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
+    // Already patched or CC 2.1.76+ changed the limits structure
+    if (file.includes('CC_SM_PER_SECTION_TOKENS')) {
+      return file;
+    }
     console.error('patch: sessionMemory: failed to find token limits pattern');
     return null;
   }

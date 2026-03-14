@@ -33,6 +33,11 @@ const patchAmberQuartz = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
+    // CC 2.1.76+ renamed to tengu_amber_quartz_disabled with inverted logic
+    // (enabled by default), so voice mode is already on
+    if (file.includes('tengu_amber_quartz_disabled')) {
+      return file;
+    }
     console.error('patch: voiceMode: failed to find tengu_amber_quartz gate');
     return null;
   }

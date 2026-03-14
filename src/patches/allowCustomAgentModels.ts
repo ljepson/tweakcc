@@ -33,6 +33,10 @@ export const writeAllowCustomAgentModels = (file: string): string | null => {
 
   const zodMatch = newFile.match(zodPattern);
   if (!zodMatch || zodMatch.index === undefined) {
+    // CC 2.1.76+ uses z.string().optional() natively — any model accepted
+    if (/,model:[$\w]+\.string\(\)\.optional\(\)/.test(newFile)) {
+      return file;
+    }
     console.error(
       'patch: allowCustomAgentModels: failed to find Zod enum pattern'
     );

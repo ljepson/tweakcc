@@ -106,6 +106,14 @@ export const writeStatuslineUpdateThrottle = (
   const match = oldFile.match(pattern);
 
   if (!match || match.index === undefined) {
+    // CC 2.1.76+ restructured statusline updates with setTimeout-based throttle
+    if (
+      /statusLineText===[\s\S]{0,300}setTimeout[\s\S]{0,100},300[,)]/.test(
+        oldFile
+      )
+    ) {
+      return oldFile;
+    }
     console.error(
       'patch: statuslineUpdateThrottle: failed to find statusline update throttle pattern'
     );

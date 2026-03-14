@@ -303,15 +303,11 @@ export const clearCaches = (): void => {
  */
 export const findTextComponent = (fileContents: string): string | undefined => {
   // Find the Text component function definition from Ink
-  // The minified Text component has this signature:
-  // function X({color:A,backgroundColor:B,dimColor:C=!1,bold:D=!1,...})
+  // Old: function X({color:A,backgroundColor:B,dimColor:C=!1,bold:D=!1,...})
+  // New (React Compiler): function X(H){let $=hook.c(N),{color:A,backgroundColor:B,dimColor:C,bold:D,...}=H
   const textComponentPattern =
-    /\bfunction ([$\w]+).{0,20}color:[$\w]+,backgroundColor:[$\w]+,dimColor:[$\w]+(?:=![01])?,bold:[$\w]+(?:=![01])?/;
-  const textComponentPatternNew =
-    /function ([$\w]+)\([$\w]+\)\{let [$\w]+=[$\w]+\.c\(\d+\),\{color:[$\w]+,backgroundColor:[$\w]+,dimColor:[$\w]+,bold:[$\w]+/;
-  const match =
-    fileContents.match(textComponentPattern) ||
-    fileContents.match(textComponentPatternNew);
+    /\bfunction ([$\w]+).{0,50}color:[$\w]+,backgroundColor:[$\w]+,dimColor:[$\w]+(?:=![01])?,bold:[$\w]+(?:=![01])?/;
+  const match = fileContents.match(textComponentPattern);
   if (!match) {
     console.log('patch: findTextComponent: failed to find text component');
     return undefined;

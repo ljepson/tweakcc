@@ -8,7 +8,16 @@ import { migrateConfigIfNeeded } from '../migration';
 import { createEnoent } from './testHelpers';
 
 describe('userMessageDisplay migration', () => {
+  const mockFilesystem = () => {
+    vi.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+    vi.spyOn(fs, 'writeFile').mockResolvedValue(undefined);
+    vi.spyOn(fs, 'stat').mockRejectedValue(createEnoent());
+    vi.spyOn(fs, 'access').mockRejectedValue(createEnoent());
+    vi.spyOn(fs, 'readdir').mockResolvedValue([]);
+  };
+
   it('should migrate old prefix/message structure to new format string', async () => {
+    mockFilesystem();
     const oldConfig = {
       ccVersion: '1.0.0',
       ccInstallationDir: null,
@@ -51,6 +60,7 @@ describe('userMessageDisplay migration', () => {
   });
 
   it('should convert rgb(0,0,0) to default/null', async () => {
+    mockFilesystem();
     const oldConfig = {
       ccVersion: '1.0.0',
       ccInstallationDir: null,
@@ -93,6 +103,7 @@ describe('userMessageDisplay migration', () => {
   });
 
   it('should preserve custom colors during migration', async () => {
+    mockFilesystem();
     const oldConfig = {
       ccVersion: '1.0.0',
       ccInstallationDir: null,
@@ -135,6 +146,7 @@ describe('userMessageDisplay migration', () => {
   });
 
   it('should not migrate if already in new format', async () => {
+    mockFilesystem();
     const newConfig = {
       ccVersion: '1.0.0',
       ccInstallationDir: null,
@@ -174,6 +186,7 @@ describe('userMessageDisplay migration', () => {
   });
 
   it('should add fitBoxToContent if missing from new format config', async () => {
+    mockFilesystem();
     const configMissingFitBox = {
       ccVersion: '1.0.0',
       ccInstallationDir: null,

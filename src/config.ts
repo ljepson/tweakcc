@@ -188,6 +188,10 @@ const normalizeConfig = (config: TweakccConfig): void => {
     delete tmpThinkingVerbs.punctuation;
   }
 
+  // Run structural migrations BEFORE deep merge so old formats get converted
+  // before defaults fill in missing keys.
+  migrateUserMessageDisplayToV320(config);
+
   // Deep merge the loaded settings with defaults to fill in any missing keys (recursively)
   // This ensures all required properties exist, including nested ones like inputPatternHighlighters
   config.settings = deepMergeWithDefaults(
@@ -227,9 +231,6 @@ const normalizeConfig = (config: TweakccConfig): void => {
       theme => deepMergeWithDefaults(theme, DEFAULT_THEME) as Theme
     );
   }
-
-  // In v3.2.0 userMessageDisplay was restructured from prefix/message to a single format string.
-  migrateUserMessageDisplayToV320(config);
 
   // In 3.2.6 hideCtrlGToEditPrompt was renamed to hideCtrlGToEdit.
   migrateHideCtrlGToEditPrompt(config);

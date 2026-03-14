@@ -180,6 +180,10 @@ const patchUpdateThresholds = (file: string): string | null => {
 
   // Check if any replacements were made
   if (newFile === file) {
+    // Already patched (env vars present)
+    if (file.includes('CC_SM_MINIMUM_MESSAGE_TOKENS_TO_INIT')) {
+      return file;
+    }
     console.error(
       'patch: sessionMemory: failed to find update thresholds patterns'
     );

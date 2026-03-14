@@ -109,6 +109,11 @@ const patchPastSessions = (file: string): string | null => {
     return newFile;
   }
 
+  // CC 2.1.76+ removed the tengu_coral_fern gate — past sessions always enabled
+  if (!file.includes('tengu_coral_fern')) {
+    return file;
+  }
+
   console.error('patch: sessionMemory: failed to find past sessions gate');
   return null;
 };

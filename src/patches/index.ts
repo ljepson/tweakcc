@@ -527,6 +527,8 @@ const applyPatchImplementations = (
     const result = impl.fn(content);
     const failed = result === null;
     const applied = !failed && result !== content;
+    // Returning unchanged content (not null) means "already native / no-op"
+    const skippedNative = !failed && result === content;
 
     if (!failed) {
       content = result;
@@ -538,6 +540,7 @@ const applyPatchImplementations = (
       group: def.group,
       applied,
       failed,
+      skipped: skippedNative,
       description: def.description,
     });
   }

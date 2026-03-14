@@ -24,6 +24,10 @@ const getStartupBannerLocation = (oldFile: string): LocationResult | null => {
 export const writeHideStartupBanner = (oldFile: string): string | null => {
   const location = getStartupBannerLocation(oldFile);
   if (!location) {
+    // CC 2.1.76+ removed the banner from the main chat view entirely
+    if (!oldFile.includes('isBeforeFirstMessage')) {
+      return oldFile;
+    }
     return null;
   }
 

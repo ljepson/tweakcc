@@ -59,7 +59,7 @@ const patchPresentTenseVerbs = (
 };
 
 const patchPastTenseVerbs = (file: string, verbs: string[]): string | null => {
-  const pattern = /\[("[A-Z][a-z'é\-\\xA-F0-9]+ed",?){5,}\]/;
+  const pattern = /\[("[A-Z][a-z'é\-\\xA-F0-9]+(?:ed|in[g'])",?){5,}\]/;
 
   const match = file.match(pattern);
 

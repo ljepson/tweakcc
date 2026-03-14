@@ -18,9 +18,10 @@ function getThemesLocation(oldFile: string): {
     return null;
   }
 
-  const themePickerAnchor = oldFile.indexOf(
-    'ZA("theme:toggleSyntaxHighlighting"'
+  const themePickerAnchorMatch = oldFile.match(
+    /[$\w]+\("theme:toggleSyntaxHighlighting"/
   );
+  const themePickerAnchor = themePickerAnchorMatch?.index ?? -1;
   const settingsThemeAnchor = oldFile.indexOf('.id==="theme"?');
 
   let objArrMatch: RegExpMatchArray | null = null;

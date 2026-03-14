@@ -28,7 +28,7 @@ const findStartupClawdComponents = (oldFile: string): number[] => {
     const beforeText = oldFile.slice(lookbackStart, clawdIndex);
 
     // Find the LAST occurrence of /function [$\w]+\(\)\{/ in that subsection
-    const functionPattern = /function [$\w]+\(\)\{/g;
+    const functionPattern = /function [$\w]+\([$\w]*\)\{/g;
     let lastFunctionMatch: RegExpExecArray | null = null;
     let match: RegExpExecArray | null;
 

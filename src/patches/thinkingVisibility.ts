@@ -47,6 +47,12 @@ export const writeThinkingVisibility = (oldFile: string): string | null => {
   const match = oldFile.match(pattern);
 
   if (!match || match.index === undefined) {
+    // CC 2.1.76+ already has isTranscriptMode:true — no patch needed
+    const alreadyApplied =
+      /case"thinking":\{?.{0,600}isTranscriptMode:true,/.test(oldFile);
+    if (alreadyApplied) {
+      return oldFile;
+    }
     console.error(
       'patch: thinkingVisibility: failed to find thinking visibility pattern'
     );

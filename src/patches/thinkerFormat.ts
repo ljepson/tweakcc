@@ -61,6 +61,27 @@ const getThinkerFormatLocation = (oldFile: string): LocationResult | null => {
     };
   }
 
+  // Template literal pattern (CC 2.1.76+): =`${expr}… `
+  const formatPatternTpl = /,([$\w]+)(=`\$\{([^`]{1,200}?)\}(?:…|\\u2026)\s*`)/;
+  const formatMatchTpl = searchSection.match(formatPatternTpl);
+
+  if (formatMatchTpl && formatMatchTpl.index != undefined) {
+    return {
+      startIndex:
+        approxAreaMatch.index +
+        formatMatchTpl.index +
+        formatMatchTpl[1].length +
+        1,
+      endIndex:
+        approxAreaMatch.index +
+        formatMatchTpl.index +
+        formatMatchTpl[1].length +
+        formatMatchTpl[2].length +
+        1,
+      identifiers: [formatMatchTpl[3]],
+    };
+  }
+
   console.error('patch: thinker format: failed to find formatMatch');
   return null;
 };

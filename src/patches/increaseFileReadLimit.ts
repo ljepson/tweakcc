@@ -9,8 +9,10 @@ import { LocationResult, showDiff } from './index';
  * the next ~100 characters to ensure we're targeting the correct value.
  */
 const getFileReadLimitLocation = (oldFile: string): LocationResult | null => {
-  // Pattern: =25000, followed within ~100 chars by <system-reminder>
-  const pattern = /=25000,([\s\S]{0,100})<system-reminder>/;
+  // Pattern: =25000, verified by CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS
+  // or <system-reminder> appearing nearby
+  const pattern =
+    /CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS[\s\S]{0,300}?=25000,|=25000,[\s\S]{0,100}<system-reminder>/;
   const match = oldFile.match(pattern);
 
   if (!match || match.index === undefined) {
@@ -20,9 +22,11 @@ const getFileReadLimitLocation = (oldFile: string): LocationResult | null => {
     return null;
   }
 
-  // The "25000" starts at match.index + 1 (after the "=")
-  const startIndex = match.index + 1;
-  const endIndex = startIndex + 5; // "25000" is 5 characters
+  // Find the exact "=25000," within the match
+  const matchStr = match[0];
+  const eqPos = matchStr.lastIndexOf('=25000,');
+  const startIndex = match.index + eqPos + 1;
+  const endIndex = startIndex + 5;
 
   return {
     startIndex,

@@ -927,20 +927,11 @@ export const writeToolsets = (
   }
 
   // Step 8: Mode-change toolset switching (optional)
+  // Note: step 8a (addCurrentToolsetAtToolChangeComponentScope) was removed —
+  // it injected a useAppState hook call that broke React Compiler's memoization
+  // slot count in CC 2.1.76+. writeModeChangeUpdateToolset reads toolset from
+  // the setState callback arg, so the external variable was dead code.
   if (planModeToolset && defaultToolset) {
-    // First, add setState access at the tool change component scope
-    result = addCurrentToolsetAtToolChangeComponentScope(
-      result,
-      defaultToolset
-    );
-    if (!result) {
-      console.error(
-        'patch: toolsets: step 8a failed (addCurrentToolsetAtToolChangeComponentScope)'
-      );
-      return null;
-    }
-
-    // Then, inject the mode change toolset switching code
     result = writeModeChangeUpdateToolset(
       result,
       planModeToolset,
@@ -948,7 +939,7 @@ export const writeToolsets = (
     );
     if (!result) {
       console.error(
-        'patch: toolsets: step 8b failed (writeModeChangeUpdateToolset)'
+        'patch: toolsets: step 8 failed (writeModeChangeUpdateToolset)'
       );
       return null;
     }

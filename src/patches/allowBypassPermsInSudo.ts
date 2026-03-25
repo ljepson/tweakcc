@@ -13,6 +13,10 @@ export const writeAllowBypassPermsInSudo = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
+    // CC 2.1.83+ removed the root/sudo permission check entirely — no patch needed
+    if (!file.includes('cannot be used with root/sudo')) {
+      return file;
+    }
     console.error('patch: allowBypassPermsInSudo: failed to find pattern');
     return null;
   }

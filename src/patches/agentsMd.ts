@@ -69,71 +69,119 @@ export const writeAgentsMd = (
 
   const fsPattern = /([$\w]+(?:\(\))?)\.(?:readFileSync|existsSync|statSync)/;
   const fsMatch = funcMatch[0].match(fsPattern);
-  if (!fsMatch) {
-    console.error('patch: agentsMd: failed to find fs expression in function');
-    return null;
-  }
-  const fsExpr = fsMatch[1];
 
   const altNamesJson = JSON.stringify(altNames);
 
-  // Step 1: Add didReroute parameter to function signature
-  const sigIndex = funcStart + upToFuncParamsClosingParen.length;
-  let newFile = file.slice(0, sigIndex) + ',didReroute' + file.slice(sigIndex);
+  if (fsMatch) {
+    // Sync path (CC <=2.1.82): fs calls are inside the matched function itself
+    const fsExpr = fsMatch[1];
 
-  showDiff(file, newFile, ',didReroute', sigIndex, sigIndex);
+    // Step 1: Add didReroute parameter to function signature
+    const sigIndex = funcStart + upToFuncParamsClosingParen.length;
+    let newFile =
+      file.slice(0, sigIndex) + ',didReroute' + file.slice(sigIndex);
 
-  // Step 2: Inject fallback logic
-  // Try new style first (CC >=2.1.63): ENOENT/EISDIR catch block
-  // Fall back to old style (CC <=2.1.62): early existsSync/isFile return null
-  const funcBody = newFile.slice(funcStart);
+    showDiff(file, newFile, ',didReroute', sigIndex, sigIndex);
 
-  const enoentPattern = /===?"ENOENT"\|\|[$\w.]+===?"EISDIR"\)return null/;
-  const enoentMatch = funcBody.match(enoentPattern);
+    // Step 2: Inject fallback logic
+    const funcBody = newFile.slice(funcStart);
 
-  // CC ≤2.1.62: existsSync/isFile check before reading
-  const oldEarlyReturnPattern = /\.isFile\(\)\)return null/;
-  // CC ≥2.1.69: try/catch with ENOENT/EISDIR error codes
-  const newEarlyReturnPattern = /==="EISDIR"\)return null/;
+    const enoentPattern = /===?"ENOENT"\|\|[$\w.]+===?"EISDIR"\)return null/;
+    const enoentMatch = funcBody.match(enoentPattern);
 
-  const earlyReturnMatch =
-    funcBody.match(oldEarlyReturnPattern) ??
-    funcBody.match(newEarlyReturnPattern);
+    const oldEarlyReturnPattern = /\.isFile\(\)\)return null/;
+    const newEarlyReturnPattern = /==="EISDIR"\)return null/;
+    const earlyReturnMatch =
+      funcBody.match(oldEarlyReturnPattern) ??
+      funcBody.match(newEarlyReturnPattern);
 
-  if (enoentMatch && enoentMatch.index !== undefined) {
-    // New style: inject at ENOENT/EISDIR return null in catch block
-    const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){let _fs=${fsExpr};for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(_fs.existsSync(altPath)&&_fs.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
+    if (enoentMatch && enoentMatch.index !== undefined) {
+      const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){let _fs=${fsExpr};for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(_fs.existsSync(altPath)&&_fs.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
 
-    const matchStart = funcStart + enoentMatch.index;
-    const oldStr = enoentMatch[0];
-    const newStr = oldStr.replace(')return null', `){${fallback}return null;}`);
+      const matchStart = funcStart + enoentMatch.index;
+      const oldStr = enoentMatch[0];
+      const newStr = oldStr.replace(
+        ')return null',
+        `){${fallback}return null;}`
+      );
 
-    newFile =
-      newFile.slice(0, matchStart) +
-      newStr +
-      newFile.slice(matchStart + oldStr.length);
+      newFile =
+        newFile.slice(0, matchStart) +
+        newStr +
+        newFile.slice(matchStart + oldStr.length);
 
-    showDiff(file, newFile, newStr, matchStart, matchStart);
-  } else if (earlyReturnMatch && earlyReturnMatch.index !== undefined) {
-    // Old style: inject at existsSync/isFile early return null
-    const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(${fsExpr}.existsSync(altPath)&&${fsExpr}.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
+      showDiff(file, newFile, newStr, matchStart, matchStart);
+    } else if (earlyReturnMatch && earlyReturnMatch.index !== undefined) {
+      const fallback = `if(!didReroute&&(${firstParam}.endsWith("/CLAUDE.md")||${firstParam}.endsWith("\\\\CLAUDE.md"))){for(let alt of ${altNamesJson}){let altPath=${firstParam}.slice(0,-9)+alt;if(${fsExpr}.existsSync(altPath)&&${fsExpr}.statSync(altPath).isFile())return ${functionName}(altPath,${restParams},true);}}`;
 
-    const earlyReturnStart = funcStart + earlyReturnMatch.index;
-    const oldStr = earlyReturnMatch[0];
-    const newStr = `.isFile()){${fallback}return null;}`;
+      const earlyReturnStart = funcStart + earlyReturnMatch.index;
+      const oldStr = earlyReturnMatch[0];
+      const newStr = `.isFile()){${fallback}return null;}`;
 
-    newFile =
-      newFile.slice(0, earlyReturnStart) +
-      newStr +
-      newFile.slice(earlyReturnStart + oldStr.length);
+      newFile =
+        newFile.slice(0, earlyReturnStart) +
+        newStr +
+        newFile.slice(earlyReturnStart + oldStr.length);
 
-    showDiff(file, newFile, newStr, earlyReturnStart, earlyReturnStart);
-  } else {
+      showDiff(file, newFile, newStr, earlyReturnStart, earlyReturnStart);
+    } else {
+      console.error(
+        'patch: agentsMd: failed to find injection point (no ENOENT catch or early return null)'
+      );
+      return null;
+    }
+
+    return newFile;
+  }
+
+  // Async path (CC 2.1.83+): file reading moved to a separate async wrapper
+  // function that calls the content-processing function (functionName).
+  // Pattern: async function WRAPPER(P1,P2,P3){try{let X=await FSEXPR.readFile(P1,...);return FUNCNAME(X,P1,P2,P3)}catch(E){return ERRHANDLER(E,P1),{info:null,includePaths:[]}}}
+  const escapedFuncName = functionName.replace(/\$/g, '\\$');
+  const asyncReaderPattern = new RegExp(
+    `(async function ([$\\w]+)\\(([$\\w]+),([$\\w]+),([$\\w]+)\\))\\{try\\{let ([$\\w]+)=await ([$\\w]+(?:\\(\\))?\\.readFile)\\(\\3,\\{encoding:"utf-8"\\}\\);return ${escapedFuncName}\\(\\6,\\3,\\4,\\5\\)\\}catch\\(([$\\w]+)\\)\\{return ([$\\w]+)\\(\\8,\\3\\),\\{info:null,includePaths:\\[\\]\\}\\}\\}`
+  );
+  const asyncMatch = file.match(asyncReaderPattern);
+  if (!asyncMatch || asyncMatch.index === undefined) {
+    console.error('patch: agentsMd: failed to find fs expression in function');
+    return null;
+  }
+
+  const asyncFuncSig = asyncMatch[1];
+  const asyncFuncName = asyncMatch[2];
+  const asyncP1 = asyncMatch[3]; // file path param
+  const asyncP2 = asyncMatch[4];
+  const asyncP3 = asyncMatch[5];
+  const asyncErrVar = asyncMatch[8];
+  const asyncErrHandler = asyncMatch[9];
+  const asyncStart = asyncMatch.index;
+
+  // Step 1: Add didReroute parameter
+  const asyncSigEnd = asyncStart + asyncFuncSig.length;
+  let newFile =
+    file.slice(0, asyncSigEnd) + ',didReroute' + file.slice(asyncSigEnd);
+
+  showDiff(file, newFile, ',didReroute', asyncSigEnd, asyncSigEnd);
+
+  // Step 2: Replace the catch block with one that tries alt filenames
+  // Original: catch(E){return HANDLER(E,P1),{info:null,includePaths:[]}}
+  // New: catch(E){if(!didReroute&&E.code==="ENOENT"&&(P1.endsWith(...))){ try alts... } return HANDLER(E,P1),{info:null,includePaths:[]}}
+  const fallback = `if(!didReroute&&${asyncErrVar}.code==="ENOENT"&&(${asyncP1}.endsWith("/CLAUDE.md")||${asyncP1}.endsWith("\\\\CLAUDE.md"))){for(let alt of ${altNamesJson}){try{let _r=await ${asyncFuncName}(${asyncP1}.slice(0,-9)+alt,${asyncP2},${asyncP3},true);if(_r.info!==null)return _r;}catch(_e){}}}`;
+
+  const oldCatch = `catch(${asyncErrVar}){return ${asyncErrHandler}(${asyncErrVar},${asyncP1}),{info:null,includePaths:[]}}`;
+  const newCatch = `catch(${asyncErrVar}){${fallback}return ${asyncErrHandler}(${asyncErrVar},${asyncP1}),{info:null,includePaths:[]}}`;
+
+  // The catch block is in the already-modified file (with didReroute added)
+  newFile = newFile.replace(oldCatch, newCatch);
+
+  if (!newFile.includes(fallback)) {
     console.error(
-      'patch: agentsMd: failed to find injection point (no ENOENT catch or early return null)'
+      'patch: agentsMd: failed to inject fallback into async catch block'
     );
     return null;
   }
+
+  showDiff(file, newFile, newCatch, asyncStart, asyncStart);
 
   return newFile;
 };

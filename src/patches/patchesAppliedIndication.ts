@@ -184,18 +184,22 @@ const applyIndicatorPatchesListPatch = (
 ): string | null => {
   // Dynamically determine nesting level at startIndex by scanning backwards
   // to find the enclosing function boundary, then counting parens forward
-  const lookbackSize = 5000;
+  // CC 2.1.83+ React Compiler produces larger functions; 5000 is insufficient
+  const lookbackSize = 15000;
   const lookbackStart = Math.max(0, startIndex - lookbackSize);
   const lookback = fileContents.slice(lookbackStart, startIndex);
 
-  const funcPattern = /\}function\s+([$\w]+)\(/g;
+  // CC 2.1.83+ React Compiler uses });function instead of }function
+  const funcPattern = /[;})]\s*function\s+([$\w]+)\(/g;
   const funcMatches = Array.from(lookback.matchAll(funcPattern));
 
   let level: number;
   if (funcMatches.length > 0) {
     const lastFunc = funcMatches[funcMatches.length - 1];
-    // +1 to skip the closing } of the previous function
-    const funcStartAbsolute = lookbackStart + lastFunc.index! + 1;
+    // Skip past the leading delimiter(s) to the `function` keyword
+    const funcKeywordOffset = lastFunc[0].indexOf('function');
+    const funcStartAbsolute =
+      lookbackStart + lastFunc.index! + funcKeywordOffset;
 
     // Count paren nesting from function start to startIndex
     level = 0;
@@ -294,8 +298,9 @@ const findPatchesListLocation = (
   const lookbackStart = Math.max(0, match.index - 1500);
   const lookbackSubstring = fileContents.slice(lookbackStart, match.index);
 
-  // 3. Take the last `}function ([$\w]+)\(`
-  const functionPattern = /\}function ([$\w]+)\(/g;
+  // 3. Take the last `}function ([$\w]+)\(` or `);function ([$\w]+)\(`
+  // CC 2.1.83+ React Compiler uses });function instead of }function
+  const functionPattern = /[;})]\s*function ([$\w]+)\(/g;
   const functionMatches = Array.from(
     lookbackSubstring.matchAll(functionPattern)
   );

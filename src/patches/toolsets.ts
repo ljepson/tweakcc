@@ -112,21 +112,35 @@ export const getMainAppComponentBodyStart = (
 export const getAppStateSelectorAndUseState = (
   fileContents: string
 ): { appStateUseSelectorFn: string; appStateSetState: string } | null => {
+  // Original pattern (CC <=2.1.82): debug message "Your selector in"
   const pattern =
     /function ([$\w]+)\(.{0,110}`Your selector in.{0,1000}?function ([$\w]+)\(\)\{return [$\w]+\(\)\.setState\}/;
   const match = fileContents.match(pattern);
 
-  if (!match) {
-    console.error(
-      'patch: getAppStateSelectorAndUseState: failed to find pattern'
-    );
-    return null;
+  if (match) {
+    return {
+      appStateUseSelectorFn: match[1],
+      appStateSetState: match[2],
+    };
   }
 
-  return {
-    appStateUseSelectorFn: match[1],
-    appStateSetState: match[2],
-  };
+  // CC 2.1.83+: useSyncExternalStore pattern (debug message removed)
+  // function SELECTOR(H){...useSyncExternalStore(VAR.subscribe,...)...}function SETSTATE(){return VAR().setState}
+  const syncStorePattern =
+    /function ([$\w]+)\([$\w]+\)\{[^}]{0,400}useSyncExternalStore[^}]{0,200}\}function ([$\w]+)\(\)\{return [$\w]+\(\)\.setState\}/;
+  const syncMatch = fileContents.match(syncStorePattern);
+
+  if (syncMatch) {
+    return {
+      appStateUseSelectorFn: syncMatch[1],
+      appStateSetState: syncMatch[2],
+    };
+  }
+
+  console.error(
+    'patch: getAppStateSelectorAndUseState: failed to find pattern'
+  );
+  return null;
 };
 
 /**

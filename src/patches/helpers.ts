@@ -343,6 +343,22 @@ export const findBoxComponent = (fileContents: string): string | undefined => {
     return boxDisplayNameMatch[1];
   }
 
+  // Method 4: React Compiler pattern (CC 2.1.83+) - single param, .c(N) hook,
+  // body-destructured {children, flexWrap}, contains createElement("ink-box")
+  const rcBoxPattern =
+    /function ([$\w]+)\([$\w]+\)\{let [$\w]+=[$\w]+\.c\(\d+\)(?:.|\n){0,300}?\{children:[$\w]+,flexWrap:[$\w]+/;
+  const rcBoxMatch = fileContents.match(rcBoxPattern);
+  if (rcBoxMatch && rcBoxMatch.index !== undefined) {
+    // Verify this function actually contains createElement("ink-box")
+    const funcBody = fileContents.slice(
+      rcBoxMatch.index,
+      rcBoxMatch.index + 3000
+    );
+    if (funcBody.includes('createElement("ink-box"')) {
+      return rcBoxMatch[1];
+    }
+  }
+
   console.error(
     'patch: findBoxComponent: failed to find Box component (neither ink-box createElement nor displayName found)'
   );

@@ -58,6 +58,10 @@ const patchConciseOutput = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
+    // CC 2.1.83+ removed the sotto_voce gate — output efficiency is always included
+    if (!file.includes('tengu_sotto_voce')) {
+      return file;
+    }
     console.error('patch: voiceMode: failed to find tengu_sotto_voce gate');
     return null;
   }

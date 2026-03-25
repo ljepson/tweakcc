@@ -35,8 +35,6 @@ import { showDiff } from './index';
  * call to the accept handler function, bypassing the approval UI.
  */
 export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
-  // First, find the accept handler function name by looking at the onChange handler
-  // near "Ready to code?". The pattern is: onChange:(X)=>FUNC(X),onCancel
   const readyIdx = oldFile.indexOf('title:"Ready to code?"');
   if (readyIdx === -1) {
     console.error(
@@ -45,32 +43,54 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
     return null;
   }
 
-  // Look for onChange handler after Ready to code
-  const afterReady = oldFile.slice(readyIdx, readyIdx + 3000);
-  const onChangeMatch = afterReady.match(
-    /onChange:\([$\w]+\)=>([$\w]+)\([$\w]+\),onCancel/
-  );
-  if (!onChangeMatch) {
-    console.error('patch: autoAcceptPlanMode: failed to find onChange handler');
-    return null;
-  }
-
-  const acceptFuncName = onChangeMatch[1];
-
-  // Check if already patched (with any function name)
-  const alreadyPatchedPattern = new RegExp(
-    `[$\\w]+\\("yes-accept-edits"\\);return null;return`
-  );
+  // Check if already patched
+  const alreadyPatchedPattern =
+    /(?:[$\w]+\("yes-accept-edits"\)|[$\w]+\.onAllow\(\{\},);return null;return/;
   if (alreadyPatchedPattern.test(oldFile)) {
     return oldFile;
   }
 
-  // Match the end of the "Exit plan mode?" conditional and the start of
-  // the "Ready to code?" return.
-  const pattern =
-    /(\}\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+\.default\.Fragment,null,[$\w]+\.default\.createElement\([$\w]+,\{color:"planMode",title:"Ready to code\?")/;
+  // Strategy 1 (CC <=2.1.82): Find accept handler via onChange arrow function
+  const afterReady = oldFile.slice(readyIdx, readyIdx + 3000);
+  const onChangeMatch = afterReady.match(
+    /onChange:\([$\w]+\)=>([$\w]+)\([$\w]+\),onCancel/
+  );
 
-  const match = oldFile.match(pattern);
+  if (onChangeMatch) {
+    const acceptFuncName = onChangeMatch[1];
+
+    const pattern =
+      /(\}\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+\.default\.Fragment,null,[$\w]+\.default\.createElement\([$\w]+,\{color:"planMode",title:"Ready to code\?")/;
+
+    const match = oldFile.match(pattern);
+    if (match && match.index !== undefined) {
+      const insertion = `${acceptFuncName}("yes-accept-edits");return null;`;
+      const replacement = match[1] + insertion + match[2];
+      const startIndex = match.index;
+      const endIndex = startIndex + match[0].length;
+      const newFile =
+        oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);
+      showDiff(oldFile, newFile, replacement, startIndex, endIndex);
+      return newFile;
+    }
+  }
+
+  // Strategy 2 (CC 2.1.83+): Inline onChange, find props.onAllow call directly
+  const nearbyChunk = oldFile.slice(Math.max(0, readyIdx - 3000), readyIdx);
+  const onAllowMatch = nearbyChunk.match(
+    /([$\w]+)\.onAllow\(\{\},\[\{type:"setMode",mode:"default",destination:"session"\}\]\)/
+  );
+  if (!onAllowMatch) {
+    console.error('patch: autoAcceptPlanMode: failed to find onChange handler');
+    return null;
+  }
+  const propsVar = onAllowMatch[1];
+
+  // Find the injection point: }))));return before "Ready to code?"
+  // The return may be createElement(Fragment,...) or createElement(Box,{...})
+  const returnPattern =
+    /(\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+,(?:\{[^}]*\}|null),[$\w]+\.default\.createElement\([$\w]+,\{(?:color:"planMode",)?title:"Ready to code\?")/;
+  const match = oldFile.match(returnPattern);
   if (!match || match.index === undefined) {
     console.error(
       'patch: autoAcceptPlanMode: failed to find "Ready to code?" return pattern'
@@ -78,19 +98,12 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
     return null;
   }
 
-  // Insert auto-accept call between the if(Q) block and the return
-  // The accept function triggers the accept flow with "yes-accept-edits"
-  // return null prevents rendering the UI (component will unmount after state change)
-  const insertion = `${acceptFuncName}("yes-accept-edits");return null;`;
+  const insertion = `${propsVar}.onAllow({},[{type:"setMode",mode:"default",destination:"session"}]);return null;`;
   const replacement = match[1] + insertion + match[2];
-
   const startIndex = match.index;
   const endIndex = startIndex + match[0].length;
-
   const newFile =
     oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);
-
   showDiff(oldFile, newFile, replacement, startIndex, endIndex);
-
   return newFile;
 };

@@ -4,6 +4,9 @@ import { showDiff } from './index';
 
 /**
  * Patch the sudo permissions check to allow bypassing permissions with --dangerously-skip-permissions, even when running with root/sudo privileges.
+ *
+ * Note: This restriction was removed upstream in CC ~2.1.80+.
+ * When the pattern is not found, we return the file unchanged (native no-op).
  */
 export const writeAllowBypassPermsInSudo = (file: string): string | null => {
   // Find pattern in minified code
@@ -13,8 +16,8 @@ export const writeAllowBypassPermsInSudo = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
-    console.error('patch: allowBypassPermsInSudo: failed to find pattern');
-    return null;
+    // Restriction was removed upstream — nothing to patch
+    return file;
   }
 
   const startIndex = match.index;

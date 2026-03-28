@@ -112,21 +112,35 @@ export const getMainAppComponentBodyStart = (
 export const getAppStateSelectorAndUseState = (
   fileContents: string
 ): { appStateUseSelectorFn: string; appStateSetState: string } | null => {
-  const pattern =
+  // Pattern A (older CC): error message includes backtick "Your selector in"
+  const patternA =
     /function ([$\w]+)\(.{0,110}`Your selector in.{0,1000}?function ([$\w]+)\(\)\{return [$\w]+\(\)\.setState\}/;
-  const match = fileContents.match(pattern);
+  const matchA = fileContents.match(patternA);
 
-  if (!match) {
-    console.error(
-      'patch: getAppStateSelectorAndUseState: failed to find pattern'
-    );
-    return null;
+  if (matchA) {
+    return {
+      appStateUseSelectorFn: matchA[1],
+      appStateSetState: matchA[2],
+    };
   }
 
-  return {
-    appStateUseSelectorFn: match[1],
-    appStateSetState: match[2],
-  };
+  // Pattern B (CC 2.1.86+): useAppState error, useSyncExternalStore, then setState
+  // function SELECTOR(H){...getState()...useSyncExternalStore...}function SETSTATE(){return STORE().setState}
+  const patternB =
+    /function ([$\w]+)\([$\w]+\)\{.{0,300}?\.getState\(\).{0,200}?useSyncExternalStore\([$\w]+\.subscribe.{0,200}?function ([$\w]+)\(\)\{return [$\w]+\(\)\.setState\}/;
+  const matchB = fileContents.match(patternB);
+
+  if (matchB) {
+    return {
+      appStateUseSelectorFn: matchB[1],
+      appStateSetState: matchB[2],
+    };
+  }
+
+  console.error(
+    'patch: getAppStateSelectorAndUseState: failed to find pattern'
+  );
+  return null;
 };
 
 /**
@@ -367,10 +381,6 @@ export const writeToolsetComponentDefinition = (
   }
 
   const dividerComponent = findDividerComponentName(oldFile);
-  if (!dividerComponent) {
-    console.error('patch: toolsets: failed to find Divider component');
-    return null;
-  }
 
   const stateInfo = getAppStateSelectorAndUseState(oldFile);
   if (!stateInfo) {
@@ -429,7 +439,7 @@ export const writeToolsetComponentDefinition = (
   return ${reactVar}.createElement(
     ${boxComponent},
     { flexDirection: "column" },
-    ${reactVar}.createElement(${dividerComponent}, { dividerColor: "permission" }),
+    ${dividerComponent ? `${reactVar}.createElement(${dividerComponent}, { dividerColor: "permission" })` : `${reactVar}.createElement(${boxComponent}, { borderStyle: "round", borderTop: true, borderBottom: false, borderLeft: false, borderRight: false, borderColor: "dim" })`},
     ${reactVar}.createElement(
       ${boxComponent},
       { paddingX: 1, marginBottom: 1, flexDirection: "column" },

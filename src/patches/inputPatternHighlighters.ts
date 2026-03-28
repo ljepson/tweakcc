@@ -36,10 +36,45 @@ const buildChalkChain = (
 // ======================================================================
 
 const writeCustomHighlighterImpl = (oldFile: string): string | null => {
-  const regex =
+  // Pattern A (older CC): if(VAR.highlight?.color)return createElement(...)
+  const regexA =
     /(if\(([$\w]+)\.highlight\?\.color\))((return [$\w]+\.createElement\([$\w]+,\{key:[$\w]+),color:[$\w]+\.highlight\.color(\},[$\w]+\.createElement\([$\w]+,null,)([$\w]+\.text)(\)\)));/;
 
-  const matches = oldFile.match(regex);
+  let matches = oldFile.match(regexA);
+  if (matches && matches.index !== undefined) {
+    const styledFormattedText = `${matches[2]}.highlight.color(${matches[6]})`;
+
+    const replacement =
+      matches[1] +
+      `{if(typeof ${matches[2]}.highlight.color==='function')` +
+      matches[4] +
+      matches[5] +
+      styledFormattedText +
+      matches[7] +
+      ';else ' +
+      matches[3] +
+      '}';
+
+    const newFile =
+      oldFile.slice(0, matches.index) +
+      replacement +
+      oldFile.slice(matches.index + matches[0].length);
+
+    showDiff(
+      oldFile,
+      newFile,
+      replacement,
+      matches.index,
+      matches.index + matches[0].length
+    );
+    return newFile;
+  }
+
+  // Pattern B (CC 2.1.86+ React Compiler): no if guard, color via optional chaining
+  // return REACT.createElement(COMP,{key:K,color:VAR.highlight?.color,...},REACT.createElement(COMP2,null,VAR.text))
+  const regexB =
+    /return ([$\w]+)\.createElement\(([$\w]+),\{key:([$\w]+),color:([$\w]+)\.highlight\?\.color(?:,[$\w]+:[$\w]+\.highlight\?\.[$\w]+)*\},([$\w]+)\.createElement\(([$\w]+),null,([$\w]+)\.text\)\)/;
+  matches = oldFile.match(regexB);
   if (!matches || matches.index === undefined) {
     console.error(
       'patch: inputPatternHighlighters: failed to find highlight?.color renderer pattern'
@@ -47,32 +82,29 @@ const writeCustomHighlighterImpl = (oldFile: string): string | null => {
     return null;
   }
 
-  const styledFormattedText = `${matches[2]}.highlight.color(${matches[6]})`;
+  const fullMatch = matches[0];
+  const reactExpr = matches[1];
+  const textComp = matches[2];
+  const keyVar = matches[3];
+  const itemVar = matches[4];
+  const reactExpr2 = matches[5];
+  const innerComp = matches[6];
+  const textPropVar = matches[7];
+
+  const exprOnly = fullMatch.slice('return '.length);
 
   const replacement =
-    matches[1] +
-    `{if(typeof ${matches[2]}.highlight.color==='function')` +
-    matches[4] +
-    matches[5] +
-    styledFormattedText +
-    matches[7] +
-    ';else ' +
-    matches[3] +
-    '}';
+    `return (typeof ${itemVar}.highlight?.color==='function'?` +
+    `${reactExpr}.createElement(${textComp},{key:${keyVar}},` +
+    `${reactExpr2}.createElement(${innerComp},null,` +
+    `${itemVar}.highlight.color(${textPropVar}.text)))` +
+    `:${exprOnly})`;
 
+  const startIndex = matches.index;
+  const endIndex = startIndex + fullMatch.length;
   const newFile =
-    oldFile.slice(0, matches.index) +
-    replacement +
-    oldFile.slice(matches.index + matches[0].length);
-
-  showDiff(
-    oldFile,
-    newFile,
-    replacement,
-    matches.index,
-    matches.index + matches[0].length
-  );
-
+    oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);
+  showDiff(oldFile, newFile, replacement, startIndex, endIndex);
   return newFile;
 };
 
@@ -83,10 +115,14 @@ const writeCustomHighlighterCreation = (
   chalkVar: string,
   highlighters: InputPatternHighlighter[]
 ): string | null => {
-  const regex =
+  // Pattern A (older CC): ,VAR=REACT.useMemo(()=>{let RANGES=[];if(...)RANGES.push(...)
+  // Pattern B (CC 2.1.86+): let VAR=REACT.useMemo(()=>{let RANGES=[];for(...)...;if(...)RANGES.push(...)
+  const regexA =
     /(,[$\w]+=[$\w]+\.useMemo\(\(\)=>\{let [$\w]+=\[\];)(if\([$\w]+&&[$\w]+&&![$\w]+\)([$\w]+)\.push\(\{start:[$\w]+,end:[$\w]+\+[$\w]+\.length,color:"warning",priority:\d+\})/;
+  const regexB =
+    /((?:let |,)[$\w]+=[$\w]+\.useMemo\(\(\)=>\{let [$\w]+=\[\];.{0,500}?)(if\([$\w]+&&[$\w]+&&![$\w]+\)([$\w]+)\.push\(\{start:[$\w]+,end:[$\w]+\+[$\w]+\.length,color:"warning",priority:\d+\})/;
 
-  const match = oldFile.match(regex);
+  const match = oldFile.match(regexA) ?? oldFile.match(regexB);
   if (!match || match.index === undefined) {
     console.error(
       'patch: inputPatternHighlighters: failed to find useMemo/push pattern'
@@ -106,17 +142,20 @@ const writeCustomHighlighterCreation = (
   }
   const reactVarFromMemo = reactMemoMatch[1];
 
-  const searchStart = Math.max(0, match.index - 4000);
+  const searchStart = Math.max(0, match.index - 10000);
   const searchWindow = oldFile.slice(searchStart, match.index);
-  const inputPattern = /\binput:([$\w]+),/;
-  const inputMatch = searchWindow.match(inputPattern);
-  if (!inputMatch) {
+  const inputPattern = /\binput:([$\w]+),/g;
+  const inputMatches = Array.from(searchWindow.matchAll(inputPattern));
+  if (inputMatches.length === 0) {
     console.error(
       'patch: inputPatternHighlighters: failed to find input variable pattern'
     );
     return null;
   }
-  const inputVar = inputMatch[1];
+  const inputVar = inputMatches[inputMatches.length - 1][1];
+
+  const isLetDecl = match[1].startsWith('let ');
+  const memoPrefix = isLetDecl ? ';let ' : ',';
 
   let useMemoCode = '';
   for (let i = 0; i < highlighters.length; i++) {
@@ -128,8 +167,9 @@ const writeCustomHighlighterCreation = (
     const regex = new RegExp(highlighter.regex, flags);
     const regexStr = stringifyRegex(regex);
 
-    useMemoCode += `,matchedTweakccReplacements${i}=${reactVarFromMemo}.useMemo(()=>{return[...${inputVar}.matchAll(${regexStr})].map(m=>({start:m.index,end:m.index+m[0].length}))},[${inputVar}])`;
+    useMemoCode += `${memoPrefix}matchedTweakccReplacements${i}=${reactVarFromMemo}.useMemo(()=>{return[...${inputVar}.matchAll(${regexStr})].map(m=>({start:m.index,end:m.index+m[0].length}))},[${inputVar}])`;
   }
+  if (isLetDecl) useMemoCode += ';';
 
   let genCode = '';
   for (let i = 0; i < highlighters.length; i++) {

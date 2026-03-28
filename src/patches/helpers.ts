@@ -343,6 +343,21 @@ export const findBoxComponent = (fileContents: string): string | undefined => {
     return boxDisplayNameMatch[1];
   }
 
+  // Method 4: React Compiler pattern (CC 2.1.86+)
+  // function NAME(H){let $=hook.c(N),...;if($[0]!==H){let{children:...,flexWrap:...}=H;
+  // The props are destructured inside a conditional rather than in the function params.
+  // We match the function signature + destructured props, then verify ink-box is in the body.
+  const rcBoxPattern =
+    /function ([$\w]+)\([$\w]+\)\{let [$\w]+=[$\w]+\.c\(\d+\).{0,500}?\{children:[$\w]+,flexWrap:[$\w]+/g;
+  let rcm;
+  while ((rcm = rcBoxPattern.exec(fileContents)) !== null) {
+    // Verify this function contains createElement("ink-box"...)
+    const funcBody = fileContents.slice(rcm.index, rcm.index + 3000);
+    if (funcBody.includes('"ink-box"')) {
+      return rcm[1];
+    }
+  }
+
   console.error(
     'patch: findBoxComponent: failed to find Box component (neither ink-box createElement nor displayName found)'
   );

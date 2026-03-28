@@ -184,17 +184,17 @@ const applyIndicatorPatchesListPatch = (
 ): string | null => {
   // Dynamically determine nesting level at startIndex by scanning backwards
   // to find the enclosing function boundary, then counting parens forward
-  const lookbackSize = 5000;
+  const lookbackSize = 8000;
   const lookbackStart = Math.max(0, startIndex - lookbackSize);
   const lookback = fileContents.slice(lookbackStart, startIndex);
 
-  const funcPattern = /\}function\s+([$\w]+)\(/g;
+  const funcPattern = /[^$\w]function\s+([$\w]+)\(/g;
   const funcMatches = Array.from(lookback.matchAll(funcPattern));
 
   let level: number;
   if (funcMatches.length > 0) {
     const lastFunc = funcMatches[funcMatches.length - 1];
-    // +1 to skip the closing } of the previous function
+    // +1 to skip the non-word char preceding 'function'
     const funcStartAbsolute = lookbackStart + lastFunc.index! + 1;
 
     // Count paren nesting from function start to startIndex

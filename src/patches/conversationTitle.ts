@@ -54,19 +54,26 @@ export const writeTitleSlashCommand = (oldFile: string): string | null => {
 export const findCustomNamingFunctionsLocation = (
   fileContents: string
 ): number | null => {
-  // Match: class [$\w]+{summaries;customTitles;messages;fileHistorySnapshots;
-  const classPattern =
+  // Pattern A (older CC): class with summaries/messages/fileHistorySnapshots fields
+  const classPatternA =
     /class ([$\w]+)\{summaries;(?:customTitles;)?messages;(?:checkpoints;)?fileHistorySnapshots;/;
-  const match = fileContents.match(classPattern);
-
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: conversationTitle: findCustomNamingFunctionsLocation: failed to find class pattern'
-    );
-    return null;
+  const matchA = fileContents.match(classPatternA);
+  if (matchA && matchA.index !== undefined) {
+    return matchA.index;
   }
 
-  return match.index;
+  // Pattern B (CC 2.1.86+): session storage class with currentSession* fields
+  const classPatternB =
+    /class ([$\w]+)\{currentSessionTag;currentSessionTitle;/;
+  const matchB = fileContents.match(classPatternB);
+  if (matchB && matchB.index !== undefined) {
+    return matchB.index;
+  }
+
+  console.error(
+    'patch: conversationTitle: findCustomNamingFunctionsLocation: failed to find class pattern'
+  );
+  return null;
 };
 
 /**
@@ -278,23 +285,28 @@ function onNewMessage(projectDir, projectSlug, msg) {
 export const findAppendEntryInterceptorLocation = (
   fileContents: string
 ): { location: number; messageVar: string } | null => {
-  // Match: if(![$\w]+\.has\(([$\w]+)\.uuid\)\){if([$\w]+\.appendFileSync(
-  const pattern =
+  // Pattern A (older CC): if(!VAR.has(MSG.uuid)){if(VAR.appendFileSync(
+  const patternA =
     /(if\(![$\w]+\.has\(([$\w]+)\.uuid\)\)\{)if\([$\w]+\.appendFileSync\(/;
-  const match = fileContents.match(pattern);
-
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: conversationTitle: findAppendEntryInterceptorLocation: failed to find pattern'
-    );
-    return null;
+  const matchA = fileContents.match(patternA);
+  if (matchA && matchA.index !== undefined) {
+    const location = matchA.index + matchA[1].length;
+    return { location, messageVar: matchA[2] };
   }
 
-  // Insertion point is after match[1], which means at match.index + match[1].length
-  const location = match.index + match[1].length;
-  const messageVar = match[2];
+  // Pattern B (CC 2.1.86+): if(await this.appendEntry(MSG),pSH(MSG))
+  // We inject before the appendEntry call
+  const patternB = /(if\(await this\.appendEntry\(([$\w]+)\),)/;
+  const matchB = fileContents.match(patternB);
+  if (matchB && matchB.index !== undefined) {
+    const location = matchB.index;
+    return { location, messageVar: matchB[2] };
+  }
 
-  return { location, messageVar };
+  console.error(
+    'patch: conversationTitle: findAppendEntryInterceptorLocation: failed to find pattern'
+  );
+  return null;
 };
 
 /**
@@ -527,13 +539,14 @@ export const writeConversationTitle = (oldFile: string): string | null => {
     return null;
   }
 
-  // Step 4: Write tweakcc summary check
-  result = writeTweakccSummaryCheck(result);
-  if (!result) {
-    console.error(
-      'patch: conversationTitle: step 4 failed (writeTweakccSummaryCheck)'
+  // Step 4: Write tweakcc summary check (optional — pattern may change between versions)
+  const tmp4 = writeTweakccSummaryCheck(result);
+  if (tmp4) {
+    result = tmp4;
+  } else {
+    console.log(
+      'patch: conversationTitle: step 4 skipped (writeTweakccSummaryCheck — pattern not found)'
     );
-    return null;
   }
 
   // Optional Step 5: Enable rename conversation command

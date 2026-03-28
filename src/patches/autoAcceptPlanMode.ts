@@ -25,6 +25,14 @@
 //  return R8.default.createElement(R8.default.Fragment,null,
 //    R8.default.createElement(fq,{color:"planMode",title:"Ready to code?",...
 // ```
+//
+// CC 2.1.86:
+// ```diff
+//  ...H.onReject()}}))));
+// +KH("yes-accept-edits");return null;
+//  return w_.default.createElement(m,{flexDirection:"column",...},
+//    w_.default.createElement(e9,{color:"planMode",title:"Ready to code?",...
+// ```
 
 import { showDiff } from './index';
 
@@ -36,7 +44,9 @@ import { showDiff } from './index';
  */
 export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
   // First, find the accept handler function name by looking at the onChange handler
-  // near "Ready to code?". The pattern is: onChange:(X)=>FUNC(X),onCancel
+  // near "Ready to code?". The pattern is either:
+  //   onChange:(X)=>FUNC(X),onCancel   (older CC, arrow wrapper)
+  //   onChange:FUNC,onCancel            (CC 2.1.86+, direct reference)
   const readyIdx = oldFile.indexOf('title:"Ready to code?"');
   if (readyIdx === -1) {
     console.error(
@@ -48,7 +58,7 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
   // Look for onChange handler after Ready to code
   const afterReady = oldFile.slice(readyIdx, readyIdx + 3000);
   const onChangeMatch = afterReady.match(
-    /onChange:\([$\w]+\)=>([$\w]+)\([$\w]+\),onCancel/
+    /onChange:(?:\([$\w]+\)=>)?([$\w]+)(?:\([$\w]+\))?[,}]/
   );
   if (!onChangeMatch) {
     console.error('patch: autoAcceptPlanMode: failed to find onChange handler');
@@ -67,8 +77,9 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
 
   // Match the end of the "Exit plan mode?" conditional and the start of
   // the "Ready to code?" return.
+  // The closing paren count varies between versions (4-5), so we use \)+
   const pattern =
-    /(\}\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+\.default\.Fragment,null,[$\w]+\.default\.createElement\([$\w]+,\{color:"planMode",title:"Ready to code\?")/;
+    /(\}\}\)+;)(return [$\w]+\.default\.createElement\([$\w]+(?:\.default\.Fragment,null|,\{[^}]*\}),[$\w]+\.default\.createElement\([$\w]+,\{(?:[^}]*,)?title:"Ready to code\?")/;
 
   const match = oldFile.match(pattern);
   if (!match || match.index === undefined) {

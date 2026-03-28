@@ -890,12 +890,7 @@ export const applyCustomization = async (
     },
     'conversation-title': {
       fn: c => writeConversationTitle(c),
-      condition:
-        (config.settings.misc?.enableConversationTitle ?? true) &&
-        !!(
-          ccInstInfo.version &&
-          compareVersions(ccInstInfo.version, '2.0.64') < 0
-        ),
+      condition: config.settings.misc?.enableConversationTitle ?? true,
     },
     'voice-mode': {
       fn: c =>

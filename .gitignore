@@ -42,3 +42,8 @@ debug.log
 *.temp
 
 *.tsbuildinfo
+
+# Scratch files
+.beads/
+plan.md
+state.toolset

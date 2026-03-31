@@ -52,6 +52,7 @@ import { writeFixLspSupport } from './fixLspSupport';
 import { writeToolsets } from './toolsets';
 import { writeTableFormat } from './tableFormat';
 import { writeConversationTitle } from './conversationTitle';
+import { writeDisableBetaHeaders } from './disableBetaHeaders';
 import { writeHideStartupBanner } from './hideStartupBanner';
 import { writeHideCtrlGToEdit } from './hideCtrlGToEdit';
 import { writeHideStartupClawd } from './hideStartupClawd';
@@ -68,6 +69,7 @@ import { writeAgentsMd } from './agentsMd';
 import { writeAutoAcceptPlanMode } from './autoAcceptPlanMode';
 import { writeAllowBypassPermsInSudo } from './allowBypassPermsInSudo';
 import { writeSuppressNativeInstallerWarning } from './suppressNativeInstallerWarning';
+import { writeSkipTrustDialog } from './skipTrustDialog';
 import { writeScrollEscapeSequenceFilter } from './scrollEscapeSequenceFilter';
 import { writeWorktreeMode } from './worktreeMode';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
@@ -352,6 +354,12 @@ const PATCH_DEFINITIONS = [
     description: 'Suppress the native installer warning message at startup',
   },
   {
+    id: 'skip-trust-dialog',
+    name: 'Skip trust dialog',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description: "Skip the 'Accessing workspace' trust dialog shown at startup",
+  },
+  {
     id: 'filter-scroll-escape-sequences',
     name: 'Filter scroll escape sequences',
     group: PatchGroup.MISC_CONFIGURABLE,
@@ -409,6 +417,13 @@ const PATCH_DEFINITIONS = [
     name: 'Input pattern highlighters',
     group: PatchGroup.FEATURES,
     description: 'Custom input highlighters will be registered',
+  },
+  {
+    id: 'disable-beta-headers',
+    name: 'Disable beta headers',
+    group: PatchGroup.MISC_CONFIGURABLE,
+    description:
+      'Disable "anthropic-beta" headers (like prompt-caching) for cleaner API requests',
   },
   {
     id: 'conversation-title',
@@ -812,6 +827,10 @@ export const applyCustomization = async (
       fn: c => writeSuppressNativeInstallerWarning(c),
       condition: !!config.settings.misc?.suppressNativeInstallerWarning,
     },
+    'skip-trust-dialog': {
+      fn: c => writeSkipTrustDialog(c),
+      condition: config.settings.misc?.skipTrustDialog !== false,
+    },
     'filter-scroll-escape-sequences': {
       fn: c => writeScrollEscapeSequenceFilter(c),
       condition: !!config.settings.misc?.filterScrollEscapeSequences,
@@ -866,6 +885,10 @@ export const applyCustomization = async (
         config.settings.inputPatternHighlighters &&
         config.settings.inputPatternHighlighters.length > 0
       ),
+    },
+    'disable-beta-headers': {
+      fn: c => writeDisableBetaHeaders(c),
+      condition: !!config.settings.misc?.disableBetaHeaders,
     },
     'conversation-title': {
       fn: c => writeConversationTitle(c),

@@ -79,6 +79,8 @@ export function MiscView({ onSubmit }: MiscViewProps) {
     suppressNativeInstallerWarning: false,
     filterScrollEscapeSequences: false,
     enableWorktreeMode: true,
+    disableBetaHeaders: false,
+    skipTrustDialog: true,
     allowCustomAgentModels: false,
     enableContextLimitOverride: false,
     enableModelCustomizations: true,
@@ -640,6 +642,33 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.filterScrollEscapeSequences =
               !settings.misc!.filterScrollEscapeSequences;
+          });
+        },
+      },
+      {
+        id: 'skipTrustDialog',
+        title: 'Skip trust dialog',
+        description:
+          "Skip the 'Accessing workspace' trust dialog shown at startup.",
+        getValue: () => settings.misc?.skipTrustDialog ?? true,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.skipTrustDialog = !settings.misc!.skipTrustDialog;
+          });
+        },
+      },
+      {
+        id: 'disableBetaHeaders',
+        title: 'Disable beta headers',
+        description:
+          'Disable "anthropic-beta" headers for cleaner API requests (CLAUDE_CODE_DISABLE_BETAS=1) or add specific ones (CLAUDE_CODE_ADD_BETAS=mcp-servers-...).',
+        getValue: () => settings.misc?.disableBetaHeaders ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.disableBetaHeaders =
+              !settings.misc!.disableBetaHeaders;
           });
         },
       },

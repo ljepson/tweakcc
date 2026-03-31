@@ -713,6 +713,8 @@ export const DEFAULT_SETTINGS: Settings = {
     suppressNativeInstallerWarning: false,
     filterScrollEscapeSequences: false,
     enableWorktreeMode: true,
+    disableBetaHeaders: false,
+    skipTrustDialog: true,
     allowCustomAgentModels: false,
     enableContextLimitOverride: false,
     enableModelCustomizations: true,

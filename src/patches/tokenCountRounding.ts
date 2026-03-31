@@ -53,10 +53,21 @@ export const writeTokenCountRounding = (
       [fullMatch, pre, partToWrap, post] = m2;
       startIndex = m2.index;
     } else {
-      console.error(
-        'patch: tokenCountRounding: cannot find token count pattern in either newer or older CC format'
+      // CC 2.1.87+: statusline token display split from overrideMessage
+      // Pattern: tokenCount...TOKENVAR=EXPR,DISPLAYVAR=FORMATTER(TOKENVAR),...DISPLAYVAR," tokens"
+      const m3 = oldFile.match(
+        /(tokenCount.{0,200},([$\w]+)=([$\w]+)\()(.+?)(\),.{0,3000}?\2," tokens")/
       );
-      return null;
+
+      if (m3 && m3.index !== undefined) {
+        [fullMatch, pre, , , partToWrap, post] = m3;
+        startIndex = m3.index;
+      } else {
+        console.error(
+          'patch: tokenCountRounding: cannot find token count pattern in either newer or older CC format'
+        );
+        return null;
+      }
     }
   }
 

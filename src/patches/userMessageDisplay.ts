@@ -145,7 +145,7 @@ export const writeUserMessageDisplay = (
   // that renders the ">" in older versions so that we can silently drop it in the replacement,
   // removing it in versions where it's present and not failing on versions where it's not.
   const pattern =
-    /(No content found in user prompt message.{0,150}?\b)([$\w]+(?:\.default)?\.createElement.{0,30}\b[$\w]+(?:\.default)?\.createElement.{0,40}">.+?)?(([$\w]+(?:\.default)?\.createElement).{0,100})(\([$\w]+,(?:\{[^{}]+wrap:"wrap"\},([$\w]+)(?:\.trim\(\))?\)\)|\{text:([$\w]+)(?:,thinkingMetadata:[$\w]+)?\}\)\)?))/;
+    /(No content found in user prompt message.{0,150}?\b)([$\w]+(?:\.default)?\.createElement.{0,30}\b[$\w]+(?:\.default)?\.createElement.{0,40}">.+?)?(([$\w]+(?:\.default)?\.createElement).{0,250})(\([$\w]+,(?:\{[^{}]+wrap:"wrap"\},([$\w]+)(?:\.trim\(\))?\)\)|\{text:([$\w]+)(?:,thinkingMetadata:[$\w]+)?\}\)\)?|\{text:([$\w]+),useBriefLayout:[$\w]+(?:,timestamp:[^}]+)?\}\)\)?))/;
 
   const match = oldFile.match(pattern);
 
@@ -157,8 +157,9 @@ export const writeUserMessageDisplay = (
   }
 
   const createElementFn = match[4];
-  // Either match[6] or match[7] will be present (never both)
-  const messageVar = match[6] ?? match[7];
+  // match[6] (wrap:"wrap"), match[7] ({text:,thinkingMetadata:}), or
+  // match[8] ({text:,useBriefLayout:}) will be present
+  const messageVar = match[6] ?? match[7] ?? match[8];
 
   // Build box attributes (border and padding)
   const boxAttrs: string[] = [];

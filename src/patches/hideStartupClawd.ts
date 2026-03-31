@@ -17,17 +17,16 @@ import { showDiff } from './index';
 const findStartupClawdComponents = (oldFile: string): number[] => {
   const indices: number[] = [];
 
+  // Method 1 (CC <2.1.87): Clawd ASCII art is inline in function bodies
   const clawdPattern = /▛███▜|\\u259B\\u2588\\u2588\\u2588\\u259C/gi;
 
   let clawdMatch: RegExpExecArray | null;
   while ((clawdMatch = clawdPattern.exec(oldFile)) !== null) {
     const clawdIndex = clawdMatch.index;
-
-    // Get 2000 chars before this occurrence
     const lookbackStart = Math.max(0, clawdIndex - 2000);
     const beforeText = oldFile.slice(lookbackStart, clawdIndex);
 
-    // Find the LAST occurrence of /function [$\w]+\(\)\{/ in that subsection
+    // Only match zero-arg functions (component renderers), not data objects
     const functionPattern = /function [$\w]+\(\)\{/g;
     let lastFunctionMatch: RegExpExecArray | null = null;
     let match: RegExpExecArray | null;
@@ -37,15 +36,43 @@ const findStartupClawdComponents = (oldFile: string): number[] => {
     }
 
     if (lastFunctionMatch) {
-      // Calculate the absolute index after the `{`
       const absoluteIndex =
         lookbackStart + lastFunctionMatch.index + lastFunctionMatch[0].length;
       indices.push(absoluteIndex);
-    } else {
-      console.error(
-        `patch: hideStartupClawd: failed to find function pattern before Clawd at position ${clawdIndex}`
-      );
     }
+    // If no function found, the art may be in a data object (CC 2.1.87+) — method 2 handles it
+  }
+
+  if (indices.length > 0) return indices;
+
+  // Method 2 (CC 2.1.87+): Clawd art is in a data object, rendered by
+  // functions that use color:"clawd_body". Find those rendering functions.
+  const clawdBodyPattern =
+    /function ([$\w]+)\([$\w]+\)\{.{0,200}color:"clawd_body"/g;
+  const seen = new Set<string>();
+
+  let bodyMatch: RegExpExecArray | null;
+  while ((bodyMatch = clawdBodyPattern.exec(oldFile)) !== null) {
+    const fnName = bodyMatch[1];
+    if (seen.has(fnName)) continue;
+    seen.add(fnName);
+
+    // Find the opening brace of the function body
+    const bodyStart = bodyMatch.index + bodyMatch[0].indexOf('{') + 1;
+    indices.push(bodyStart);
+  }
+
+  // Also find the parent component that delegates to the clawd_body renderers
+  // Pattern: function X(H){...q49[...]...createElement(...{pose:...})...clawd_body
+  const parentPattern =
+    /function ([$\w]+)\([$\w]+\)\{.{0,400}q49\[.{0,400}color:"clawd_body"/g;
+  while ((bodyMatch = parentPattern.exec(oldFile)) !== null) {
+    const fnName = bodyMatch[1];
+    if (seen.has(fnName)) continue;
+    seen.add(fnName);
+
+    const bodyStart = bodyMatch.index + bodyMatch[0].indexOf('{') + 1;
+    indices.push(bodyStart);
   }
 
   return indices;

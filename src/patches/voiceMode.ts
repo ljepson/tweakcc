@@ -28,9 +28,13 @@
 import { showDiff } from './index';
 
 const patchAmberQuartz = (file: string): string | null => {
-  const pattern = /function [$\w]+\(\)\{return [$\w]+\("tengu_amber_quartz"/;
+  // CC <2.1.87: function X(){return A9("tengu_amber_quartz",!1)}
+  const pattern1 = /function [$\w]+\(\)\{return [$\w]+\("tengu_amber_quartz"/;
+  // CC 2.1.87+: function X(){return!B$("tengu_amber_quartz_disabled",!1)}
+  const pattern2 =
+    /function [$\w]+\(\)\{return![$\w]+\("tengu_amber_quartz_disabled"/;
 
-  const match = file.match(pattern);
+  const match = file.match(pattern1) ?? file.match(pattern2);
 
   if (!match || match.index === undefined) {
     console.error('patch: voiceMode: failed to find tengu_amber_quartz gate');
@@ -53,8 +57,11 @@ const patchConciseOutput = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
-    console.error('patch: voiceMode: failed to find tengu_sotto_voce gate');
-    return null;
+    // tengu_sotto_voce was removed in CC 2.1.87+ — skip silently
+    console.log(
+      'patch: voiceMode: tengu_sotto_voce not found (removed in this version), skipping'
+    );
+    return file;
   }
 
   const replacement = 'if(!0)';

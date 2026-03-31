@@ -112,9 +112,14 @@ export const getMainAppComponentBodyStart = (
 export const getAppStateSelectorAndUseState = (
   fileContents: string
 ): { appStateUseSelectorFn: string; appStateSetState: string } | null => {
-  const pattern =
+  // CC <2.1.87: `Your selector in` error text
+  const pattern1 =
     /function ([$\w]+)\(.{0,110}`Your selector in.{0,1000}?function ([$\w]+)\(\)\{return [$\w]+\(\)\.setState\}/;
-  const match = fileContents.match(pattern);
+  // CC 2.1.87+: useAppState error, then useSyncExternalStore selector, then setState
+  const pattern2 =
+    /useAppState.{0,2000}?function ([$\w]+)\([$\w]+\)\{.{0,200}useSyncExternalStore.{0,200}function ([$\w]+)\(\)\{return [$\w]+\(\)\.setState\}/;
+
+  const match = fileContents.match(pattern1) ?? fileContents.match(pattern2);
 
   if (!match) {
     console.error(
@@ -366,11 +371,8 @@ export const writeToolsetComponentDefinition = (
     return null;
   }
 
+  // Divider component is optional — removed in CC 2.1.87+
   const dividerComponent = findDividerComponentName(oldFile);
-  if (!dividerComponent) {
-    console.error('patch: toolsets: failed to find Divider component');
-    return null;
-  }
 
   const stateInfo = getAppStateSelectorAndUseState(oldFile);
   if (!stateInfo) {
@@ -408,6 +410,10 @@ export const writeToolsetComponentDefinition = (
     : 'undefined';
 
   // Generate the component code
+  const dividerElement = dividerComponent
+    ? `${reactVar}.createElement(${dividerComponent}, { dividerColor: "permission" }),`
+    : '';
+
   const componentCode = `const toolsetComp = ({ onExit, input }) => {
   const currentToolset = ${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};
 
@@ -429,7 +435,7 @@ export const writeToolsetComponentDefinition = (
   return ${reactVar}.createElement(
     ${boxComponent},
     { flexDirection: "column" },
-    ${reactVar}.createElement(${dividerComponent}, { dividerColor: "permission" }),
+    ${dividerElement}
     ${reactVar}.createElement(
       ${boxComponent},
       { paddingX: 1, marginBottom: 1, flexDirection: "column" },

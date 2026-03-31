@@ -47,9 +47,15 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
 
   // Look for onChange handler after Ready to code
   const afterReady = oldFile.slice(readyIdx, readyIdx + 3000);
-  const onChangeMatch = afterReady.match(
+
+  // CC <2.1.87: onChange:(X)=>FUNC(X),onCancel
+  const onChangeMatch1 = afterReady.match(
     /onChange:\([$\w]+\)=>([$\w]+)\([$\w]+\),onCancel/
   );
+  // CC 2.1.87+: onChange:FUNC,onCancel (direct ref, not lambda)
+  const onChangeMatch2 = afterReady.match(/onChange:([$\w]+),onCancel/);
+
+  const onChangeMatch = onChangeMatch1 ?? onChangeMatch2;
   if (!onChangeMatch) {
     console.error('patch: autoAcceptPlanMode: failed to find onChange handler');
     return null;
@@ -67,10 +73,14 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
 
   // Match the end of the "Exit plan mode?" conditional and the start of
   // the "Ready to code?" return.
-  const pattern =
+  // CC <2.1.87: ...}}))));return REACT.createElement(REACT.Fragment,null,...planMode...
+  const pattern1 =
     /(\}\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+\.default\.Fragment,null,[$\w]+\.default\.createElement\([$\w]+,\{color:"planMode",title:"Ready to code\?")/;
+  // CC 2.1.87+: ...}}))));return REACT.createElement(BOX,{flexDirection:"column",tabIndex:0,...planMode...
+  const pattern2 =
+    /(\}\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+,\{flexDirection:"column",tabIndex:0,autoFocus:!0,onKeyDown:[$\w]+\},[$\w]+\.default\.createElement\([$\w]+,\{color:"planMode",title:"Ready to code\?")/;
 
-  const match = oldFile.match(pattern);
+  const match = oldFile.match(pattern1) ?? oldFile.match(pattern2);
   if (!match || match.index === undefined) {
     console.error(
       'patch: autoAcceptPlanMode: failed to find "Ready to code?" return pattern'

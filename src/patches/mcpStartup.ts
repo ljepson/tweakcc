@@ -76,7 +76,12 @@ const getBatchSizeLocation = (oldFile: string): LocationResult | null => {
 export const writeMcpNonBlocking = (oldFile: string): string | null => {
   const location = getNonBlockingCheckLocation(oldFile);
   if (!location) {
-    return null;
+    // MCP_CONNECTION_NONBLOCKING was removed in CC 2.1.87+ (startup is
+    // already non-blocking by default). Skip silently.
+    console.log(
+      'patch: mcpStartup: MCP_CONNECTION_NONBLOCKING not found (removed in this version), skipping'
+    );
+    return oldFile;
   }
 
   // Replace the check with "false" to force non-blocking mode

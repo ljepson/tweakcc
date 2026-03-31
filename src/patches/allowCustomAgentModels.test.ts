@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
 
 // CC 2.1.69 style - realistic mock based on actual extracted JS
@@ -100,20 +100,26 @@ describe('allowCustomAgentModels', () => {
     });
 
     it('should return null when no patterns found', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       const result = writeAllowCustomAgentModels(
         'totally unrelated code with no patterns'
       );
       expect(result).toBeNull();
+      vi.restoreAllMocks();
     });
 
     it('should return null when only Zod pattern found', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       const result = writeAllowCustomAgentModels(mockOnlyZod);
       expect(result).toBeNull();
+      vi.restoreAllMocks();
     });
 
     it('should return null when only validation pattern found', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       const result = writeAllowCustomAgentModels(mockOnlyValidation);
       expect(result).toBeNull();
+      vi.restoreAllMocks();
     });
 
     it('should not match a false positive with different array variable', () => {

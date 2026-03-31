@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { writeAgentsMd } from './agentsMd';
 
 const mockFunction =
@@ -58,8 +58,10 @@ describe('agentsMd', () => {
     });
 
     it('should return null when function pattern is not found', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       const result = writeAgentsMd('not a valid file', altNames);
       expect(result).toBeNull();
+      vi.restoreAllMocks();
     });
   });
 });

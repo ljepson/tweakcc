@@ -19,9 +19,9 @@ function getThemesLocation(oldFile: string): {
   }
 
   const objArrPat =
-    /\[(?:\.\.\.\[\],)?(?:\{label:"(?:Dark|Light|Auto)[^"]*",value:"[^"]+"\},?)+\]/;
+    /\[(?:\.\.\.\(feature\("AUTO_THEME"\)\s*\?\s*\[\{label:"Auto \(match terminal\)",value:"auto"(?:\s+as const)?\}\]\s*:\s*\[\]\),)?\{label:"Dark mode",value:"dark"\},\{label:"Light mode",value:"light"\}(?:,\{label:"Dark mode \(colorblind-friendly\)",value:"dark-daltonized"\},\{label:"Light mode \(colorblind-friendly\)",value:"light-daltonized"\},\{label:"Dark mode \(ANSI colors only\)",value:"dark-ansi"\},\{label:"Light mode \(ANSI colors only\)",value:"light-ansi"\})?\]/;
   const objPat =
-    /return\{(?:(?:[$\w]+|"[^"]+"):"(?:Auto|Dark|Light)[^"]*",?)+\}/;
+    /(?:return|[$\w]+=)\{auto:"Auto \(match terminal\)",dark:"Dark mode",light:"Light mode"(?:,"dark-daltonized":"Dark mode \(colorblind-friendly\)","light-daltonized":"Light mode \(colorblind-friendly\)","dark-ansi":"Dark mode \(ANSI colors only\)","light-ansi":"Light mode \(ANSI colors only\)")?\}/;
   const objArrMatch = oldFile.match(objArrPat);
   const objMatch = oldFile.match(objPat);
 
@@ -70,8 +70,15 @@ export const writeThemes = (
   // Process in reverse order to avoid index shifting
 
   // Update theme mapping object (obj)
+  const originalObj = oldFile.slice(
+    locations.obj.startIndex,
+    locations.obj.endIndex
+  );
+  const objPrefix = originalObj.startsWith('return')
+    ? 'return'
+    : originalObj.slice(0, originalObj.indexOf('{'));
   const obj =
-    'return' +
+    objPrefix +
     JSON.stringify(
       Object.fromEntries(themes.map(theme => [theme.id, theme.name]))
     );

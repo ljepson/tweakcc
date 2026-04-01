@@ -50,9 +50,6 @@ export const findDividerComponentName = (
 
   const matches = Array.from(fileContents.matchAll(dividerPattern));
   if (matches.length === 0) {
-    console.error(
-      'patch: findDividerComponentName: failed to find dividerPattern'
-    );
     return null;
   }
 

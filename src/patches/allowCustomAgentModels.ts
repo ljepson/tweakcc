@@ -26,16 +26,13 @@
 
 import { showDiff } from './index';
 
-export const writeAllowCustomAgentModels = (file: string): string | null => {
+function patchLegacyFrontmatterValidation(file: string): string | null {
   let newFile = file;
 
   const zodPattern = /,model:([$\w]+)\.enum\(([$\w]+)\)\.optional\(\)/;
 
   const zodMatch = newFile.match(zodPattern);
   if (!zodMatch || zodMatch.index === undefined) {
-    console.error(
-      'patch: allowCustomAgentModels: failed to find Zod enum pattern'
-    );
     return null;
   }
 
@@ -76,5 +73,31 @@ export const writeAllowCustomAgentModels = (file: string): string | null => {
 
   showDiff(beforePatch2, newFile, validReplacement, validStart, validEnd);
 
+  return newFile;
+}
+
+export const writeAllowCustomAgentModels = (file: string): string | null => {
+  const legacyResult = patchLegacyFrontmatterValidation(file);
+  if (legacyResult !== null) {
+    return legacyResult;
+  }
+
+  const schemaPattern =
+    /model:([$\w]+)\.enum\(\[(?:"sonnet"|'sonnet'),(?:"opus"|'opus'),(?:"haiku"|'haiku')\]\)\.optional\(\)/;
+  const schemaMatch = file.match(schemaPattern);
+  if (!schemaMatch || schemaMatch.index === undefined) {
+    console.error(
+      'patch: allowCustomAgentModels: failed to find Zod enum pattern'
+    );
+    return null;
+  }
+
+  const replacement = `model:${schemaMatch[1]}.string().optional()`;
+  const startIndex = schemaMatch.index;
+  const endIndex = startIndex + schemaMatch[0].length;
+  const newFile =
+    file.slice(0, startIndex) + replacement + file.slice(endIndex);
+
+  showDiff(file, newFile, replacement, startIndex, endIndex);
   return newFile;
 };

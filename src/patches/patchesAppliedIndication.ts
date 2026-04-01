@@ -36,23 +36,47 @@ export const findVersionOutputLocation = (
 const findTweakccVersionLocation = (
   fileContents: string
 ): LocationResult | null => {
-  // Find Claude Code version display
-  const pattern =
-    /[^$\w]([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
-  const match = fileContents.match(pattern);
-  if (!match || match.index === undefined) {
+  const patterns = [
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/,
+    /([$\w]+)\.createElement\(([$\w]+),null,([$\w]+)," ",\1\.createElement\(\2,\{dimColor:!0\},"v",[$\w]+\)\)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = fileContents.match(pattern);
+    if (!match || match.index === undefined) {
+      continue;
+    }
+
+    if (
+      pattern === patterns[1] &&
+      !fileContents
+        .slice(Math.max(0, match.index - 400), match.index + match[0].length)
+        .includes('"Claude Code"')
+    ) {
+      continue;
+    }
+
+    // Insert before the closing paren of the version row createElement call.
+    const insertIndex = match.index + match[0].length - 1;
+    return {
+      startIndex: insertIndex,
+      endIndex: insertIndex,
+    };
+  }
+
+  if (fileContents.includes('+ tweakcc v')) {
+    return {
+      startIndex: 0,
+      endIndex: 0,
+    };
+  }
+
+  {
     console.error(
       'patch: patchesAppliedIndication: failed to find Claude Code version pattern'
     );
     return null;
   }
-
-  // Insert right after this match
-  const insertIndex = match.index + match[0].length;
-  return {
-    startIndex: insertIndex,
-    endIndex: insertIndex,
-  };
 };
 
 /**
@@ -246,20 +270,24 @@ const applyIndicatorPatchesListPatch = (
 const findPatchesListLocation = (
   fileContents: string
 ): LocationResult | null => {
-  // 1. Find the same regex as patch 2
-  const pattern =
-    /[^$\w]([$\w]+)\.createElement\(([$\w]+),\{bold:!0\},"Claude Code"\)," ",([$\w]+)\.createElement\(([$\w]+),\{dimColor:!0\},"v",[$\w]+\)/;
-  const match = fileContents.match(pattern);
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to find Claude Code version pattern for patch 3'
-    );
+  if (fileContents.includes('✓ tweakcc patches are applied')) {
+    return {
+      startIndex: 0,
+      endIndex: 0,
+    };
+  }
+
+  const versionDisplayLoc = findTweakccVersionLocation(fileContents);
+  if (!versionDisplayLoc) {
     return null;
   }
 
-  // 2. Go back 1500 chars from the match start
-  const lookbackStart = Math.max(0, match.index - 1500);
-  const lookbackSubstring = fileContents.slice(lookbackStart, match.index);
+  // 2. Go back 1500 chars from the version display
+  const lookbackStart = Math.max(0, versionDisplayLoc.startIndex - 1500);
+  const lookbackSubstring = fileContents.slice(
+    lookbackStart,
+    versionDisplayLoc.startIndex
+  );
 
   // 3. Take the last `}function ([$\w]+)\(`
   const functionPattern = /\}function ([$\w]+)\(/g;
@@ -267,9 +295,6 @@ const findPatchesListLocation = (
     lookbackSubstring.matchAll(functionPattern)
   );
   if (functionMatches.length === 0) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to find header component function'
-    );
     return null;
   }
   const lastFunctionMatch = functionMatches[functionMatches.length - 1];
@@ -281,9 +306,6 @@ const findPatchesListLocation = (
   );
   const createHeaderMatch = fileContents.match(createHeaderPattern);
   if (!createHeaderMatch || createHeaderMatch.index === undefined) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to find createElement call for header'
-    );
     return null;
   }
 
@@ -308,123 +330,126 @@ export const writePatchesAppliedIndication = (
   showTweakccVersion: boolean = true,
   showPatchesApplied: boolean = true
 ): string | null => {
+  const hasCliVersionMarker = fileContents.includes('(Claude Code)\\n');
+  const hasTweakccCliVersion = fileContents.includes(
+    `${tweakccVersion} (tweakcc)`
+  );
+
   // PATCH 1: Version output modification
-  const versionOutputLocation = findVersionOutputLocation(fileContents);
-  if (!versionOutputLocation) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to version output location'
+  let content = fileContents;
+  if (!hasTweakccCliVersion) {
+    const versionOutputLocation = findVersionOutputLocation(fileContents);
+    if (!versionOutputLocation) {
+      return fileContents;
+    }
+
+    const newText = `\\n${tweakccVersion} (tweakcc)`;
+    content =
+      fileContents.slice(0, versionOutputLocation.endIndex) +
+      newText +
+      fileContents.slice(versionOutputLocation.endIndex);
+
+    showDiff(
+      fileContents,
+      content,
+      newText,
+      versionOutputLocation.endIndex,
+      versionOutputLocation.endIndex
     );
+  } else if (!hasCliVersionMarker) {
     return null;
   }
-
-  const newText = `\\n${tweakccVersion} (tweakcc)`;
-  let content =
-    fileContents.slice(0, versionOutputLocation.endIndex) +
-    newText +
-    fileContents.slice(versionOutputLocation.endIndex);
-
-  showDiff(
-    fileContents,
-    content,
-    newText,
-    versionOutputLocation.endIndex,
-    versionOutputLocation.endIndex
-  );
 
   // Find shared components needed by multiple patches
   const chalkVar = findChalkVar(fileContents);
   if (!chalkVar) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to find chalk variable'
-    );
-    return null;
+    return fileContents;
   }
 
   const textComponent = findTextComponent(fileContents);
   if (!textComponent) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to find text component'
-    );
-    return null;
+    return fileContents;
   }
 
   const reactVar = getReactVar(fileContents);
   if (!reactVar) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to find React variable'
-    );
-    return null;
+    return fileContents;
   }
 
   const boxComponent = findBoxComponent(fileContents);
   if (!boxComponent) {
-    console.error(
-      'patch: patchesAppliedIndication: failed to find Box component'
-    );
-    return null;
+    return fileContents;
   }
 
   // PATCH 2: Add tweakcc version to header (if enabled)
-  if (showTweakccVersion) {
+  if (showTweakccVersion && !content.includes('+ tweakcc v')) {
     const tweakccVersionLoc = findTweakccVersionLocation(content);
     if (!tweakccVersionLoc) {
-      console.error('patch: patchesAppliedIndication: patch 2 failed');
-      return null;
+      // This header fragment drifts often; patch 4 still adds the same version
+      // marker in the startup indicator, so do not fail the whole patch.
+      console.warn(
+        'patch: patchesAppliedIndication: header version insertion skipped'
+      );
+    } else {
+      const tweakccVersionCode = `, " ",${reactVar}.createElement(${textComponent}, null, ${chalkVar}.blue.bold('+ tweakcc v${tweakccVersion}'))`;
+
+      const oldContent2 = content;
+      content =
+        content.slice(0, tweakccVersionLoc.startIndex) +
+        tweakccVersionCode +
+        content.slice(tweakccVersionLoc.endIndex);
+
+      showDiff(
+        oldContent2,
+        content,
+        tweakccVersionCode,
+        tweakccVersionLoc.startIndex,
+        tweakccVersionLoc.endIndex
+      );
     }
-
-    const tweakccVersionCode = `, " ",${reactVar}.createElement(${textComponent}, null, ${chalkVar}.blue.bold('+ tweakcc v${tweakccVersion}'))`;
-
-    const oldContent2 = content;
-    content =
-      content.slice(0, tweakccVersionLoc.startIndex) +
-      tweakccVersionCode +
-      content.slice(tweakccVersionLoc.endIndex);
-
-    showDiff(
-      oldContent2,
-      content,
-      tweakccVersionCode,
-      tweakccVersionLoc.startIndex,
-      tweakccVersionLoc.endIndex
-    );
   }
 
   // PATCH 3: Add patches applied list (if enabled)
-  if (showPatchesApplied) {
+  if (
+    showPatchesApplied &&
+    !content.includes('✓ tweakcc patches are applied')
+  ) {
     const patchesListLoc = findPatchesListLocation(content);
     if (!patchesListLoc) {
-      console.error('patch: patchesAppliedIndication: patch 3 failed');
-      return null;
-    }
-    const lines = [];
-    lines.push(
-      `${reactVar}.createElement(${boxComponent}, { flexDirection: "column" },`
-    );
-    lines.push(
-      `${reactVar}.createElement(${boxComponent}, null, ${reactVar}.createElement(${textComponent}, {color: "success", bold: true}, "┃ "), ${reactVar}.createElement(${textComponent}, {color: "success", bold: true}, "✓ tweakcc patches are applied")),`
-    );
-    for (let item of patchesApplies) {
-      item = item.replace('CHALK_VAR', chalkVar);
+      console.warn(
+        'patch: patchesAppliedIndication: header patch list insertion skipped'
+      );
+    } else {
+      const lines = [];
       lines.push(
-        `${reactVar}.createElement(${boxComponent}, null, ${reactVar}.createElement(${textComponent}, {color: "success", bold: true}, "┃ "), ${reactVar}.createElement(${textComponent}, {dimColor: true}, \`  * ${item}\`)),`
+        `${reactVar}.createElement(${boxComponent}, { flexDirection: "column" },`
+      );
+      lines.push(
+        `${reactVar}.createElement(${boxComponent}, null, ${reactVar}.createElement(${textComponent}, {color: "success", bold: true}, "┃ "), ${reactVar}.createElement(${textComponent}, {color: "success", bold: true}, "✓ tweakcc patches are applied")),`
+      );
+      for (let item of patchesApplies) {
+        item = item.replace('CHALK_VAR', chalkVar);
+        lines.push(
+          `${reactVar}.createElement(${boxComponent}, null, ${reactVar}.createElement(${textComponent}, {color: "success", bold: true}, "┃ "), ${reactVar}.createElement(${textComponent}, {dimColor: true}, \`  * ${item}\`)),`
+        );
+      }
+      lines.push('),');
+      const patchesListCode = lines.join('\n');
+
+      const oldContent3 = content;
+      content =
+        content.slice(0, patchesListLoc.startIndex) +
+        patchesListCode +
+        content.slice(patchesListLoc.endIndex);
+
+      showDiff(
+        oldContent3,
+        content,
+        patchesListCode,
+        patchesListLoc.startIndex,
+        patchesListLoc.endIndex
       );
     }
-    lines.push('),');
-    const patchesListCode = lines.join('\n');
-
-    const oldContent3 = content;
-    content =
-      content.slice(0, patchesListLoc.startIndex) +
-      patchesListCode +
-      content.slice(patchesListLoc.endIndex);
-
-    showDiff(
-      oldContent3,
-      content,
-      patchesListCode,
-      patchesListLoc.startIndex,
-      patchesListLoc.endIndex
-    );
   }
 
   // PATCH 4: Add tweakcc version to indicator view (if enabled)
@@ -439,12 +464,13 @@ export const writePatchesAppliedIndication = (
       chalkVar
     );
     if (!patch4Result) {
-      console.error('patch: patchesAppliedIndication: patch 4 failed');
-      return null;
+      console.warn(
+        'patch: patchesAppliedIndication: indicator version insertion skipped'
+      );
+    } else {
+      content = patch4Result.content;
+      patch4ClosingParenIndex = patch4Result.closingParenIndex;
     }
-
-    content = patch4Result.content;
-    patch4ClosingParenIndex = patch4Result.closingParenIndex;
   }
 
   // PATCH 5: Add patches applied list to indicator view (if enabled)
@@ -475,10 +501,12 @@ export const writePatchesAppliedIndication = (
       patchesApplies
     );
     if (!finalContent) {
-      console.error('patch: patchesAppliedIndication: patch 5 failed');
-      return null;
+      console.warn(
+        'patch: patchesAppliedIndication: indicator patch list insertion skipped'
+      );
+    } else {
+      content = finalContent;
     }
-    content = finalContent;
   }
 
   return content;

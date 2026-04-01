@@ -716,6 +716,12 @@ export const applyCustomization = async (
           showTweakccVersion,
           showPatchesApplied
         ),
+      // 2.1.89's startup banner layout drifted and this host cannot reliably
+      // repack the native ELF build, so keep this cosmetic patch disabled
+      // there instead of reporting a hard failure on every apply.
+      condition:
+        (showTweakccVersion || showPatchesApplied) &&
+        !(ccInstInfo.nativeInstallationPath && ccInstInfo.version === '2.1.89'),
     },
     'model-customizations': {
       fn: c => writeModelCustomizations(c),

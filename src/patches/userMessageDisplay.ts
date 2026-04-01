@@ -123,6 +123,14 @@ export const writeUserMessageDisplay = (
   oldFile: string,
   config: UserMessageDisplayConfig
 ): string | null => {
+  const possibleVars = ['O', 'w', 'B', 'Q', '$', '_'];
+  for (const v of possibleVars) {
+    const rendered = `\`${config.format.replace(/\{\}/g, '${' + v + '}')}\``;
+    if (oldFile.includes(rendered)) {
+      return oldFile;
+    }
+  }
+
   const textComponent = findTextComponent(oldFile);
   if (!textComponent) {
     console.error('patch: userMessageDisplay: failed to find Text component');
@@ -149,17 +157,36 @@ export const writeUserMessageDisplay = (
 
   const match = oldFile.match(pattern);
 
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: userMessageDisplay: failed to find user message display pattern'
-    );
-    return null;
-  }
+  let createElementFn: string;
+  let messageVar: string;
+  let startIndex: number;
+  let endIndex: number;
+  let replacementPrefix: string;
 
-  const createElementFn = match[4];
-  // match[6] (wrap:"wrap"), match[7] ({text:,thinkingMetadata:}), or
-  // match[8] ({text:,useBriefLayout:}) will be present
-  const messageVar = match[6] ?? match[7] ?? match[8];
+  if (match && match.index !== undefined) {
+    createElementFn = match[4];
+    messageVar = match[6] ?? match[7] ?? match[8];
+    startIndex = match.index;
+    endIndex = startIndex + match[0].length;
+    replacementPrefix = match[1];
+  } else {
+    const patchedPattern =
+      /(if\(!([$\w]+)\)return [^;]+;return ([$\w]+)\.default\.createElement\(([$\w]+),\{alignSelf:"flex-start"\},([$\w]+)\.default\.createElement\(([$\w]+),null,)([^)]+)\)\)/;
+    const patchedMatch = oldFile.match(patchedPattern);
+
+    if (!patchedMatch || patchedMatch.index === undefined) {
+      console.error(
+        'patch: userMessageDisplay: failed to find user message display pattern'
+      );
+      return null;
+    }
+
+    messageVar = patchedMatch[2];
+    createElementFn = `${patchedMatch[3]}.default.createElement`;
+    startIndex = patchedMatch.index;
+    endIndex = startIndex + patchedMatch[0].length;
+    replacementPrefix = `if(!${messageVar})return YH(Error("No content found in user prompt message")),null;`;
+  }
 
   // Build box attributes (border and padding)
   const boxAttrs: string[] = [];
@@ -239,11 +266,8 @@ export const writeUserMessageDisplay = (
 
   // Build replacement: match[1] + createElement(Box, boxProps, createElement(Text, null, chalkFormattedString))
   const replacement =
-    match[1] +
+    replacementPrefix +
     `${createElementFn}(${boxComponent},${boxAttrsObjStr},${createElementFn}(${textComponent},null,${chalkFormattedString}))`;
-
-  const startIndex = match.index;
-  const endIndex = startIndex + match[0].length;
 
   const newFile =
     oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);

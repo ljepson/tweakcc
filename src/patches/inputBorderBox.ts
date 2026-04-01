@@ -31,23 +31,23 @@ export const writeInputBoxBorder = (
   oldFile: string,
   removeBorder: boolean
 ): string | null => {
+  if (!removeBorder || oldFile.includes('borderColor:undefined')) {
+    return oldFile;
+  }
+
   const location = getInputBoxBorderLocation(oldFile);
   if (!location) {
     return null;
   }
 
-  if (removeBorder) {
-    const newProp = 'borderColor:undefined';
+  const newProp = 'borderColor:undefined';
 
-    const newFile =
-      oldFile.slice(0, location.startIndex) +
-      newProp +
-      oldFile.slice(location.endIndex);
+  const newFile =
+    oldFile.slice(0, location.startIndex) +
+    newProp +
+    oldFile.slice(location.endIndex);
 
-    showDiff(oldFile, newFile, newProp, location.startIndex, location.endIndex);
+  showDiff(oldFile, newFile, newProp, location.startIndex, location.endIndex);
 
-    return newFile;
-  } else {
-    return oldFile;
-  }
+  return newFile;
 };

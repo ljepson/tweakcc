@@ -89,6 +89,15 @@ export const writeThinkingVerbs = (
   oldFile: string,
   verbs: string[]
 ): string | null => {
+  if (
+    (verbs[0] && oldFile.includes(verbs[0])) ||
+    oldFile.includes(
+      'Describe your most recent action in 3-5 words using present tense (-ing).'
+    )
+  ) {
+    return oldFile;
+  }
+
   const afterPresentTense = patchPresentTenseVerbs(oldFile, verbs);
   if (afterPresentTense === null) {
     return null;

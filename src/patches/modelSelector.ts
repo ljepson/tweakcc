@@ -68,6 +68,10 @@ const findCustomModelListInsertionPoint = (
 };
 
 export const writeModelCustomizations = (oldFile: string): string | null => {
+  if (oldFile.includes('"value":"claude-opus-4-6"')) {
+    return oldFile;
+  }
+
   const found = findCustomModelListInsertionPoint(oldFile);
   if (!found) return null;
 

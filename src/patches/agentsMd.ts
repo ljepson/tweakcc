@@ -51,6 +51,10 @@ export const writeAgentsMd = (
   file: string,
   altNames: string[]
 ): string | null => {
+  if (file.includes('didReroute')) {
+    return file;
+  }
+
   // CC <2.1.87: sync function with readFileSync/existsSync/statSync
   const syncFuncPattern =
     /(function ([$\w]+)\(([$\w]+),([^)]+?))\)(?:.|\n){0,500}Skipping non-text file in @include/;

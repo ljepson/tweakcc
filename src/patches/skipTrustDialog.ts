@@ -63,6 +63,10 @@ export const writeSkipTrustDialog = (file: string): string | null => {
   }
 
   const fnBody = file.substring(fnStart, fnEnd);
+  if (fnBody === `function ${fnMatch[1]}(){return!0}`) {
+    return file;
+  }
+
   if (!fnBody.endsWith('return!1}')) {
     console.error(
       'patch: skipTrustDialog: function does not end with return!1}'

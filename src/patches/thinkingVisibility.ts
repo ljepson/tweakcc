@@ -36,6 +36,10 @@ import { showDiff } from './index';
  */
 
 export const writeThinkingVisibility = (oldFile: string): string | null => {
+  if (oldFile.includes('isTranscriptMode:true')) {
+    return oldFile;
+  }
+
   // Unified pattern that matches both formats:
   // - Group 1: `case"thinking":` (+/- `{`)
   // - Group 2: `if(...) return null;` (the early return we want to remove)

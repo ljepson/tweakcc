@@ -293,6 +293,10 @@ const patchAlwaysShowInModelSelector = (oldFile: string): string | null => {
  * Main entry point: Apply all opusplan[1m] patches
  */
 export const writeOpusplan1m = (oldFile: string): string | null => {
+  if (oldFile.includes('opusplan[1m]')) {
+    return oldFile;
+  }
+
   let newFile = oldFile;
 
   // Patch 1: Mode switching function

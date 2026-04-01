@@ -577,6 +577,7 @@ export const applyCustomization = async (
   patchFilter?: string[] | null
 ): Promise<ApplyCustomizationResult> => {
   let content: string;
+  let originalContent = '';
 
   if (ccInstInfo.nativeInstallationPath) {
     // For native installations: restore the binary, then extract to memory
@@ -603,11 +604,17 @@ export const applyCustomization = async (
       await extractClaudeJsFromNativeInstallation(pathToExtractFrom);
 
     const origPath = path.join(CONFIG_DIR, 'native-claudejs-orig.js');
+    const patchedPath = path.join(CONFIG_DIR, 'native-claudejs-patched.js');
     if (claudeJsBuffer) {
       // Save original extracted JS for debugging
       fsSync.writeFileSync(origPath, claudeJsBuffer);
       debug(`Saved original extracted JS from native to: ${origPath}`);
       content = claudeJsBuffer.toString('utf8');
+    } else if (fsSync.existsSync(patchedPath)) {
+      debug(
+        `Native extraction failed; falling back to cached patched JS: ${patchedPath}`
+      );
+      content = fsSync.readFileSync(patchedPath, 'utf8');
     } else if (fsSync.existsSync(origPath)) {
       debug(
         `Native extraction failed; falling back to cached extracted JS: ${origPath}`
@@ -626,6 +633,8 @@ export const applyCustomization = async (
 
     content = await fs.readFile(ccInstInfo.cliPath, { encoding: 'utf8' });
   }
+
+  originalContent = content;
 
   // Collect all patch results
   const allResults: PatchResult[] = [];
@@ -947,6 +956,11 @@ export const applyCustomization = async (
     applyPatchImplementations(content, patchImplementations, patchFilter);
   content = patchedContent;
   allResults.push(...patchResults);
+
+  if (ccInstInfo.nativeInstallationPath && content === originalContent) {
+    debug('No binary changes detected after patching; skipping write/repack');
+    return { config, results: allResults };
+  }
 
   // ==========================================================================
   // Write the modified content back

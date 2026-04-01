@@ -95,6 +95,10 @@ const getOpenDocumentLocation = (oldFile: string): LocationResult | null => {
 };
 
 export const writeFixLspSupport = (oldFile: string): string | null => {
+  if (oldFile.includes("const path = await import('path');")) {
+    return oldFile;
+  }
+
   // Patch 1: Comment out the validation by replacing with nothing
   const validationPattern1 =
     /if\([$\w]+\.restartOnCrash!==void 0\)throw Error\(`LSP server '\$\{[$\w]+\}': restartOnCrash is not yet implemented\. Remove this field from the configuration\.`\);/g;

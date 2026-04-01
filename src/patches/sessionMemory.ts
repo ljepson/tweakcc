@@ -180,6 +180,14 @@ const patchUpdateThresholds = (file: string): string | null => {
  * Combined patch - applies extraction, past sessions, token limits, and update thresholds
  */
 export const writeSessionMemory = (oldFile: string): string | null => {
+  if (
+    oldFile.includes('CC_SM_MINIMUM_MESSAGE_TOKENS_TO_INIT') ||
+    oldFile.includes('CC_SM_MINIMUM_TOKENS_BETWEEN_UPDATE') ||
+    oldFile.includes('CC_SM_TOOL_CALLS_BETWEEN_UPDATES')
+  ) {
+    return oldFile;
+  }
+
   let newFile = patchExtraction(oldFile);
   if (!newFile) return null;
 

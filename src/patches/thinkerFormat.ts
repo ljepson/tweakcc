@@ -69,6 +69,17 @@ export const writeThinkerFormat = (
   oldFile: string,
   format: string
 ): string | null => {
+  if (oldFile.includes('+"…"') || oldFile.includes('+"\\u2026"')) {
+    // If the native formatter no longer matches but the file already contains a
+    // custom spinner verb path, do not fail the reapply.
+    if (oldFile.includes('spinnerVerbs') || oldFile.includes('activeForm')) {
+      const location = getThinkerFormatLocation(oldFile);
+      if (!location) {
+        return oldFile;
+      }
+    }
+  }
+
   const location = getThinkerFormatLocation(oldFile);
   if (!location) {
     return null;

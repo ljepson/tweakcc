@@ -19,22 +19,33 @@ import { showDiff, LocationResult } from './index';
 const getNonBlockingCheckLocation = (
   oldFile: string
 ): LocationResult | null => {
-  // Match: !VARNAME(process.env.MCP_CONNECTION_NONBLOCKING)
-  // The variable name changes between npm/native builds, so we match any identifier
-  const pattern = /![$\w]+\(process\.env\.MCP_CONNECTION_NONBLOCKING\)/;
-  const match = oldFile.match(pattern);
+  const patterns = [
+    /![$\w]+\(process\.env\.MCP_CONNECTION_NONBLOCKING\)/,
+    /([$\w]+)=[$\w]+\(process\.env\.MCP_CONNECTION_NONBLOCKING\)/,
+  ];
 
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: mcpStartup: failed to find MCP_CONNECTION_NONBLOCKING check'
-    );
-    return null;
+  for (const pattern of patterns) {
+    const match = oldFile.match(pattern);
+    if (!match || match.index === undefined) {
+      continue;
+    }
+
+    if (pattern === patterns[0]) {
+      return {
+        startIndex: match.index,
+        endIndex: match.index + match[0].length,
+      };
+    }
+
+    const assignedVar = match[1];
+    const startIndex = match.index + assignedVar.length + 1;
+    return {
+      startIndex,
+      endIndex: match.index + match[0].length,
+    };
   }
 
-  return {
-    startIndex: match.index,
-    endIndex: match.index + match[0].length,
-  };
+  return null;
 };
 
 /**
@@ -78,14 +89,11 @@ export const writeMcpNonBlocking = (oldFile: string): string | null => {
   if (!location) {
     // MCP_CONNECTION_NONBLOCKING was removed in CC 2.1.87+ (startup is
     // already non-blocking by default). Skip silently.
-    console.log(
-      'patch: mcpStartup: MCP_CONNECTION_NONBLOCKING not found (removed in this version), skipping'
-    );
     return oldFile;
   }
 
-  // Replace the check with "false" to force non-blocking mode
-  const newValue = 'false';
+  // Replace the check/value with "true" to force non-blocking mode.
+  const newValue = 'true';
   const newFile =
     oldFile.slice(0, location.startIndex) +
     newValue +

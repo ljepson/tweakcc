@@ -19,24 +19,29 @@ export const writeThinkerSymbolChars = (
     /function ([$\w]+)\(\)\{if\(process\.env\.TERM==="xterm-ghostty"\)return\[[^\]]+\];return\[[^\]]+\]\}/g;
 
   let match;
-  while ((match = arrayPattern.exec(oldFile)) !== null) {
-    locations.push({
-      startIndex: match.index,
-      endIndex: match.index + match[0].length,
-    });
-  }
-
+  const functionLocations: Array<LocationResult & { replacement: string }> = [];
   while ((match = functionPattern.exec(oldFile)) !== null) {
     const replacement =
       `function ${match[1]}(){` +
       `if(process.env.TERM==="xterm-ghostty")return${symbolsJson};` +
       `return${symbolsJson}}`;
 
-    locations.push({
+    functionLocations.push({
       startIndex: match.index,
       endIndex: match.index + match[0].length,
       replacement,
     } as LocationResult & { replacement: string });
+  }
+
+  if (functionLocations.length > 0) {
+    locations.push(...functionLocations);
+  } else {
+    while ((match = arrayPattern.exec(oldFile)) !== null) {
+      locations.push({
+        startIndex: match.index,
+        endIndex: match.index + match[0].length,
+      });
+    }
   }
 
   if (locations.length === 0) {

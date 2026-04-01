@@ -193,6 +193,9 @@ interface BunData {
   bunData: Buffer;
   /** Header size used in section format: 4 for old format (Bun < 1.3.4), 8 for new format. Only for Mach-O and PE. */
   sectionHeaderSize?: number;
+  /** Raw ELF LOAD-segment fallback metadata for binaries with corrupt section tables. */
+  elfLoadSegmentOffset?: number;
+  elfLoadSegmentSize?: number;
   /** Detected module struct size: SIZEOF_MODULE_OLD (36) or SIZEOF_MODULE_NEW (52). */
   moduleStructSize: number;
 }
@@ -533,6 +536,52 @@ function extractBunDataFromELFSection(
 }
 
 /**
+ * Fallback ELF layout for binaries whose section table is corrupted but whose
+ * Bun payload still lives in a dedicated read-only PT_LOAD segment.
+ *
+ * We scan read-only LOAD segments and treat a segment as Bun payload if it
+ * begins with a valid [u64 payload_len][payload] blob whose trailer matches
+ * Bun's canonical marker. This avoids relying on section metadata entirely.
+ */
+function extractBunDataFromELFLoadSegment(
+  elfBinary: LIEF.ELF.Binary
+): BunData | null {
+  try {
+    const loadSegments = elfBinary
+      .segments()
+      .filter(s => s.type === 'LOAD' && s.flags === 4)
+      .sort((a, b) => Number(b.fileOffset) - Number(a.fileOffset));
+
+    for (const segment of loadSegments) {
+      const segmentContent = Buffer.from(segment.content);
+      if (segmentContent.length < 8 + SIZEOF_OFFSETS + BUN_TRAILER.length) {
+        continue;
+      }
+
+      try {
+        const result = extractBunDataFromSection(segmentContent);
+        debug(
+          `extractBunDataFromELFLoadSegment: matched LOAD segment at offset 0x${Number(segment.fileOffset).toString(16)}`
+        );
+        return {
+          ...result,
+          elfLoadSegmentOffset: Number(segment.fileOffset),
+          elfLoadSegmentSize: Number(segment.fileSize),
+        };
+      } catch {
+        continue;
+      }
+    }
+
+    debug('extractBunDataFromELFLoadSegment: no matching LOAD segment found');
+    return null;
+  } catch (error) {
+    debug('extractBunDataFromELFLoadSegment: failed to extract:', error);
+    return null;
+  }
+}
+
+/**
  * Legacy ELF layout (Bun < 1.3.x, pre-PR#26923):
  * [original ELF ...][Bun data...][Bun offsets][Bun trailer][u64 totalByteCount]
  *
@@ -678,6 +727,11 @@ function getBunData(
       if (sectionResult) {
         debug('getBunData: Using new ELF .bun section format');
         return sectionResult;
+      }
+      const loadSegmentResult = extractBunDataFromELFLoadSegment(elfBinary);
+      if (loadSegmentResult) {
+        debug('getBunData: Using ELF LOAD-segment fallback format');
+        return loadSegmentResult;
       }
       // Fall back to legacy overlay format
       debug('getBunData: Falling back to legacy ELF overlay format');
@@ -1018,6 +1072,48 @@ function atomicWriteBinary(
     }
 
     // Check if it's a "file busy" / permission error when replacing the executable
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      (error.code === 'ETXTBSY' ||
+        error.code === 'EBUSY' ||
+        error.code === 'EPERM')
+    ) {
+      throw new Error(
+        'Cannot update the Claude executable while it is running.\n' +
+          'Please close all Claude instances and try again.'
+      );
+    }
+
+    throw error;
+  }
+}
+
+function atomicWriteFileBuffer(
+  outputBuffer: Buffer,
+  outputPath: string,
+  originalPath: string,
+  copyPermissions: boolean = true
+): void {
+  const tempPath = outputPath + '.tmp';
+  fs.writeFileSync(tempPath, outputBuffer);
+
+  if (copyPermissions) {
+    const origStat = fs.statSync(originalPath);
+    fs.chmodSync(tempPath, origStat.mode);
+  }
+
+  try {
+    fs.renameSync(tempPath, outputPath);
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+
     if (
       error instanceof Error &&
       'code' in error &&
@@ -1376,6 +1472,42 @@ function repackELFOverlay(
   }
 }
 
+function repackELFLoadSegment(
+  binPath: string,
+  newBunBuffer: Buffer,
+  outputPath: string,
+  segmentOffset: number,
+  segmentSize: number
+): void {
+  try {
+    const newSectionData = buildSectionData(newBunBuffer, 8);
+    if (newSectionData.length > segmentSize) {
+      throw new Error(
+        `Updated Bun payload (${newSectionData.length} bytes) exceeds ELF LOAD segment capacity (${segmentSize} bytes)`
+      );
+    }
+
+    const originalBinary = fs.readFileSync(binPath);
+    const outputBinary = Buffer.from(originalBinary);
+
+    newSectionData.copy(outputBinary, segmentOffset);
+    outputBinary.fill(
+      0,
+      segmentOffset + newSectionData.length,
+      segmentOffset + segmentSize
+    );
+
+    debug(
+      `repackELFLoadSegment: Wrote ${newSectionData.length} bytes into LOAD segment at 0x${segmentOffset.toString(16)} (capacity 0x${segmentSize.toString(16)})`
+    );
+
+    atomicWriteFileBuffer(outputBinary, outputPath, binPath);
+  } catch (error) {
+    console.error('repackELFLoadSegment failed:', error);
+    throw error;
+  }
+}
+
 /**
  * Repacks a modified claude.js back into the native installation binary.
  *
@@ -1398,8 +1530,14 @@ export function repackNativeInstallation(
   const binary = LIEF.parse(binPath);
 
   // Extract Bun data and rebuild with modified claude.js
-  const { bunOffsets, bunData, sectionHeaderSize, moduleStructSize } =
-    getBunData(binary);
+  const {
+    bunOffsets,
+    bunData,
+    sectionHeaderSize,
+    elfLoadSegmentOffset,
+    elfLoadSegmentSize,
+    moduleStructSize,
+  } = getBunData(binary);
   const newBuffer = rebuildBunData(
     bunData,
     bunOffsets,
@@ -1433,7 +1571,15 @@ export function repackNativeInstallation(
       );
       break;
     case 'ELF':
-      if (sectionHeaderSize) {
+      if (elfLoadSegmentOffset != null && elfLoadSegmentSize != null) {
+        repackELFLoadSegment(
+          binPath,
+          newBuffer,
+          outputPath,
+          elfLoadSegmentOffset,
+          elfLoadSegmentSize
+        );
+      } else if (sectionHeaderSize) {
         // New .bun section format (post-PR#26923)
         repackELFSection(
           binary as LIEF.ELF.Binary,

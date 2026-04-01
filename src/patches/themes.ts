@@ -19,7 +19,7 @@ function getThemesLocation(oldFile: string): {
   }
 
   const objArrPat =
-    /\[(?:\.\.\.\(feature\("AUTO_THEME"\)\s*\?\s*\[\{label:"Auto \(match terminal\)",value:"auto"(?:\s+as const)?\}\]\s*:\s*\[\]\),)?\{label:"Dark mode",value:"dark"\},\{label:"Light mode",value:"light"\}(?:,\{label:"Dark mode \(colorblind-friendly\)",value:"dark-daltonized"\},\{label:"Light mode \(colorblind-friendly\)",value:"light-daltonized"\},\{label:"Dark mode \(ANSI colors only\)",value:"dark-ansi"\},\{label:"Light mode \(ANSI colors only\)",value:"light-ansi"\})?\]/;
+    /\[(?:(?:\.\.\.\[\])|(?:\.\.\.\(feature\("AUTO_THEME"\)\s*\?\s*\[\{label:"Auto \(match terminal\)",value:"auto"(?:\s+as const)?\}\]\s*:\s*\[\]\)))?,?\{label:"Dark mode",value:"dark"\},\{label:"Light mode",value:"light"\}(?:,\{label:"Dark mode \(colorblind-friendly\)",value:"dark-daltonized"\},\{label:"Light mode \(colorblind-friendly\)",value:"light-daltonized"\},\{label:"Dark mode \(ANSI colors only\)",value:"dark-ansi"\},\{label:"Light mode \(ANSI colors only\)",value:"light-ansi"\})?\]/;
   const objPat =
     /(?:return|[$\w]+=)\{auto:"Auto \(match terminal\)",dark:"Dark mode",light:"Light mode"(?:,"dark-daltonized":"Dark mode \(colorblind-friendly\)","light-daltonized":"Light mode \(colorblind-friendly\)","dark-ansi":"Dark mode \(ANSI colors only\)","light-ansi":"Light mode \(ANSI colors only\)")?\}/;
   const objArrMatch = oldFile.match(objArrPat);

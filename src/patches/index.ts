@@ -75,6 +75,8 @@ import { writeWorktreeMode } from './worktreeMode';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
 import { writeVoiceMode } from './voiceMode';
 import { writeChannelsMode } from './channelsMode';
+import { writeGrowthBookAntParity } from './growthBookAntParity';
+import { writePlanModeInterview } from './planModeInterview';
 import {
   restoreNativeBinaryFromBackup,
   restoreClijsFromBackup,
@@ -366,6 +368,19 @@ const PATCH_DEFINITIONS = [
     description:
       'Filter out terminal escape sequences that cause unwanted scrolling',
   },
+  {
+    id: 'growthbook-ant-parity',
+    name: 'GrowthBook ant parity',
+    group: PatchGroup.FEATURES,
+    description:
+      'Restore env and ~/.claude.json GrowthBook overrides in external builds',
+  },
+  {
+    id: 'plan-mode-interview',
+    name: 'Plan mode interview',
+    group: PatchGroup.FEATURES,
+    description: 'Force the plan-mode interview phase on',
+  },
   // Features
   {
     id: 'allow-custom-agent-models',
@@ -587,16 +602,20 @@ export const applyCustomization = async (
     const claudeJsBuffer =
       await extractClaudeJsFromNativeInstallation(pathToExtractFrom);
 
-    if (!claudeJsBuffer) {
+    const origPath = path.join(CONFIG_DIR, 'native-claudejs-orig.js');
+    if (claudeJsBuffer) {
+      // Save original extracted JS for debugging
+      fsSync.writeFileSync(origPath, claudeJsBuffer);
+      debug(`Saved original extracted JS from native to: ${origPath}`);
+      content = claudeJsBuffer.toString('utf8');
+    } else if (fsSync.existsSync(origPath)) {
+      debug(
+        `Native extraction failed; falling back to cached extracted JS: ${origPath}`
+      );
+      content = fsSync.readFileSync(origPath, 'utf8');
+    } else {
       throw new Error('Failed to extract claude.js from native installation');
     }
-
-    // Save original extracted JS for debugging
-    const origPath = path.join(CONFIG_DIR, 'native-claudejs-orig.js');
-    fsSync.writeFileSync(origPath, claudeJsBuffer);
-    debug(`Saved original extracted JS from native to: ${origPath}`);
-
-    content = claudeJsBuffer.toString('utf8');
   } else {
     // For NPM installations: restore cli.js from backup, then read it
     await restoreClijsFromBackup(ccInstInfo);
@@ -834,6 +853,14 @@ export const applyCustomization = async (
     'filter-scroll-escape-sequences': {
       fn: c => writeScrollEscapeSequenceFilter(c),
       condition: !!config.settings.misc?.filterScrollEscapeSequences,
+    },
+    'growthbook-ant-parity': {
+      fn: c => writeGrowthBookAntParity(c),
+      condition: !!config.settings.antParity?.enableGrowthBookOverrides,
+    },
+    'plan-mode-interview': {
+      fn: c => writePlanModeInterview(c),
+      condition: !!config.settings.antParity?.forcePlanModeInterview,
     },
     // Features
     'allow-custom-agent-models': {

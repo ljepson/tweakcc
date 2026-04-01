@@ -163,6 +163,11 @@ export interface SubagentModelsConfig {
   generalPurpose: string | null;
 }
 
+export interface AntParityConfig {
+  enableGrowthBookOverrides: boolean;
+  forcePlanModeInterview: boolean;
+}
+
 export interface Settings {
   themes: Theme[];
   thinkingVerbs: ThinkingVerbsConfig;
@@ -174,6 +179,7 @@ export interface Settings {
   defaultToolset: string | null;
   planModeToolset: string | null;
   subagentModels: SubagentModelsConfig;
+  antParity: AntParityConfig;
   inputPatternHighlighters: InputPatternHighlighter[];
   inputPatternHighlightersTestText: string; // Global test text for previewing highlighters
   claudeMdAltNames: string[] | null;

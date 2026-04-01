@@ -730,6 +730,10 @@ export const DEFAULT_SETTINGS: Settings = {
     explore: null,
     generalPurpose: null,
   },
+  antParity: {
+    enableGrowthBookOverrides: false,
+    forcePlanModeInterview: false,
+  },
   inputPatternHighlighters: [],
   inputPatternHighlightersTestText: 'Type test text here to see highlighting',
   claudeMdAltNames: [

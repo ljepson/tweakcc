@@ -59,15 +59,20 @@ globalThis.__tweakccKairos = new class KairosManager {
 }();
 `;
 
-  // Inject after CommonJS wrapper, not before Bun header
-  // Pattern: // @bun @bytecode @bun-cjs\n(function(exports, require, module, __filename, __dirname) {
-  const cjsWrapperPattern =
-    /(^\/\/ @bun[^\n]*\n\(function\(exports, require, module, __filename, __dirname\) \{)/;
-  const cjsMatch = oldFile.match(cjsWrapperPattern);
+  // Inject after Bun CommonJS wrapper to not before header
+  // The wrapper looks like: // @bun ... \n(function(exports, require, module, __filename, __dirname) {
+  const BUN_CJS_MARKER =
+    '(function(exports, require, module, __filename, __dirname) {';
+  const markerIdx = oldFile.indexOf(BUN_CJS_MARKER);
   let newFile: string;
-  if (cjsMatch) {
+  if (markerIdx !== -1) {
     // Inject after the wrapper opening
-    newFile = oldFile.replace(cjsMatch[0], cjsMatch[0] + '\n' + kairosManager);
+    const insertPoint = markerIdx + BUN_CJS_MARKER.length;
+    newFile =
+      oldFile.slice(0, insertPoint) +
+      '\n' +
+      kairosManager +
+      oldFile.slice(insertPoint);
   } else {
     // Fallback: prepend (for non-Bun bundles)
     newFile = kairosManager + oldFile;

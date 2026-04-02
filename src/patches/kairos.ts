@@ -59,7 +59,19 @@ globalThis.__tweakccKairos = new class KairosManager {
 }();
 `;
 
-  let newFile = kairosManager + oldFile;
+  // Inject after CommonJS wrapper, not before Bun header
+  // Pattern: // @bun @bytecode @bun-cjs\n(function(exports, require, module, __filename, __dirname) {
+  const cjsWrapperPattern =
+    /(^\/\/ @bun[^\n]*\n\(function\(exports, require, module, __filename, __dirname\) \{)/;
+  const cjsMatch = oldFile.match(cjsWrapperPattern);
+  let newFile: string;
+  if (cjsMatch) {
+    // Inject after the wrapper opening
+    newFile = oldFile.replace(cjsMatch[0], cjsMatch[0] + '\n' + kairosManager);
+  } else {
+    // Fallback: prepend (for non-Bun bundles)
+    newFile = kairosManager + oldFile;
+  }
 
   // 1. Enable KAIROS feature gates in u$
   const uPattern = /function u\$\(H,\$\)\{/;

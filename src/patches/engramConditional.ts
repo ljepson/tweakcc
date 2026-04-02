@@ -42,10 +42,9 @@ export const writeEngramConditional = (oldFile: string): string | null => {
     oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);
 
   // Step 2: Inject the startup probe
-  // We want to find a good place to start the probe.
-  // Maybe near the start of the bundle or in an existing init function.
-  // G_7 or similar.
-  const probeCode = `(async()=>{try{let h=await fetch("https://engram.blissawry.com/mcp/",{method:"OPTIONS",timeout:2000});globalThis.__engramAvailable=h.ok}catch{globalThis.__engramAvailable=false}})();`;
+  // Initialize to false (fail-closed) so features are disabled until probe succeeds.
+  // This prevents race conditions where feature gates check before the async probe completes.
+  const probeCode = `globalThis.__engramAvailable=false;(async()=>{try{let h=await fetch("https://engram.blissawry.com/mcp/",{method:"OPTIONS"});if(h.ok)globalThis.__engramAvailable=true}catch{}})();`;
 
   // We will just prepend it to the whole file
   newFile = probeCode + '\n' + newFile;

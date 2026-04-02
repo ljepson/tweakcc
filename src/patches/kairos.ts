@@ -87,7 +87,6 @@ globalThis.__tweakccKairos = new class KairosManager {
   const vkfNeedle =
     /let ([$\w]+)=null;if\(([$\w]+)&&([$\w]+)\?\.isKairosCronEnabled\(\)\)/;
   const vkfMatch = newFile.match(vkfNeedle);
-  console.log('kairos: vkfNeedle check:', !!vkfMatch);
   if (vkfMatch) {
     const kVar = vkfMatch[1];
     const replacement = `let ${kVar}=null; if(globalThis.__tweakccKairos.isKairosEnabled()){${kVar}={start:function(){this.iv=setInterval(()=>{if(typeof j!=="undefined"&&!j&&typeof X!=="undefined"&&!X)globalThis.__tweakccKairos.checkTick((v)=>{nD({mode:"prompt",value:v,uuid:DP.randomUUID(),priority:"later",isMeta:!0,workload:$W$});yH()})},5000)},stop:function(){clearInterval(this.iv)}};${kVar}.start()}else if(${vkfMatch[2]}&&${vkfMatch[3]}?.isKairosCronEnabled())`;

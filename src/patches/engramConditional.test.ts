@@ -15,10 +15,12 @@ describe('engramConditional', () => {
 
     expect(result).not.toBeNull();
     expect(result).toContain('globalThis.__engramAvailable');
-    expect(result).toContain('H==="tengu_passport_quail"||H==="tengu_moth_copse"');
     expect(result).toContain(
-      '(async()=>{try{let h=await fetch("https://engram.blissawry.com/mcp/",{method:"OPTIONS",timeout:2000});globalThis.__engramAvailable=h.ok}catch{globalThis.__engramAvailable=false}})();'
+      'H==="tengu_passport_quail"||H==="tengu_moth_copse"'
     );
+    // New fail-closed probe pattern
+    expect(result).toContain('globalThis.__engramAvailable=false;');
+    expect(result).toContain('if(h.ok)globalThis.__engramAvailable=true');
   });
 
   it('returns unchanged when the bundle is already patched', () => {

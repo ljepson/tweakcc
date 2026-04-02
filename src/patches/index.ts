@@ -397,12 +397,14 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.FEATURES,
     description:
       'Retry prompt-too-long failures by invoking the built-in compaction path',
+    supportedVersions: ['2.1.89'],
   },
   {
     id: 'context-collapse',
     name: 'Context collapse',
     group: PatchGroup.FEATURES,
     description: 'Archive-based context management',
+    supportedVersions: ['2.1.89'],
   },
   {
     id: 'engram-conditional',
@@ -422,6 +424,7 @@ const PATCH_DEFINITIONS = [
     name: 'Verification agent',
     group: PatchGroup.FEATURES,
     description: 'Expose the built-in verification agent in external builds',
+    supportedVersions: ['2.1.89'],
   },
   {
     id: 'auto-launch-verification-agent',
@@ -429,6 +432,7 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.FEATURES,
     description:
       'Launch the verification agent automatically when 3+ tasks close out',
+    supportedVersions: ['2.1.89'],
   },
   // Features
   {
@@ -523,7 +527,13 @@ const PATCH_DEFINITIONS = [
     description:
       'Enable MCP channel notifications (--channels without allowlist or dev flag)',
   },
-] as const;
+] as const satisfies readonly {
+  id: string;
+  name: string;
+  group: PatchGroup;
+  description: string;
+  supportedVersions?: readonly string[];
+}[];
 
 /** Union type of all valid patch IDs */
 export type PatchId = (typeof PATCH_DEFINITIONS)[number]['id'];
@@ -534,6 +544,7 @@ export interface PatchDefinition {
   name: string;
   group: PatchGroup;
   description: string;
+  supportedVersions?: readonly string[];
 }
 
 /**
@@ -574,6 +585,7 @@ export const escapeIdent = (ident: string): string => {
 const applyPatchImplementations = (
   content: string,
   implementations: Record<PatchId, PatchImplementation>,
+  ccVersion?: string,
   patchFilter?: string[] | null
 ): { content: string; results: PatchResult[] } => {
   const results: PatchResult[] = [];
@@ -581,6 +593,11 @@ const applyPatchImplementations = (
   // Process patches in the order defined in PATCH_DEFINITIONS
   for (const def of PATCH_DEFINITIONS) {
     const impl = implementations[def.id];
+    const supportedVersions: readonly string[] | undefined =
+      'supportedVersions' in def ? def.supportedVersions : undefined;
+    const versionSupported =
+      !supportedVersions ||
+      (ccVersion != null && supportedVersions.includes(ccVersion));
 
     // Skip patches not in the filter (if filter is provided)
     if (patchFilter && !patchFilter.includes(def.id)) {
@@ -590,6 +607,22 @@ const applyPatchImplementations = (
         group: def.group,
         applied: false,
         skipped: true,
+        description: def.description,
+      });
+      continue;
+    }
+
+    if (!versionSupported) {
+      results.push({
+        id: def.id,
+        name: def.name,
+        group: def.group,
+        applied: false,
+        skipped: true,
+        details:
+          ccVersion == null
+            ? `requires Claude Code ${supportedVersions!.join(', ')}`
+            : `validated only for Claude Code ${supportedVersions!.join(', ')} (current ${ccVersion})`,
         description: def.description,
       });
       continue;
@@ -1053,7 +1086,12 @@ export const applyCustomization = async (
   // Apply all patches
   // ==========================================================================
   const { content: patchedContent, results: patchResults } =
-    applyPatchImplementations(content, patchImplementations, patchFilter);
+    applyPatchImplementations(
+      content,
+      patchImplementations,
+      ccInstInfo.version,
+      patchFilter
+    );
   content = patchedContent;
   allResults.push(...patchResults);
 

@@ -506,6 +506,36 @@ function extractBunDataFromSection(sectionData: Buffer): BunData {
   };
 }
 
+function extractBunDataFromSectionWithPadding(sectionData: Buffer): BunData {
+  if (sectionData.length < 8 + SIZEOF_OFFSETS + BUN_TRAILER.length) {
+    throw new Error('section data is too small');
+  }
+
+  const payloadLen = Number(sectionData.readBigUInt64LE(0));
+  const totalLen = 8 + payloadLen;
+
+  if (payloadLen <= 0 || totalLen > sectionData.length) {
+    throw new Error('section data header does not fit within segment');
+  }
+
+  const bunDataContent = sectionData.subarray(8, totalLen);
+  const padding = sectionData.subarray(totalLen);
+
+  if (padding.some(byte => byte !== 0)) {
+    throw new Error('segment padding after Bun payload is non-zero');
+  }
+
+  const { bunOffsets, bunData, moduleStructSize } =
+    parseBunDataBlob(bunDataContent);
+
+  return {
+    bunOffsets,
+    bunData,
+    moduleStructSize,
+    sectionHeaderSize: 8,
+  };
+}
+
 /**
  * New ELF format (Bun >= 1.3.x, post-PR#26923):
  * Bun data is stored in a .bun ELF section, using the same
@@ -557,7 +587,8 @@ function extractBunDataFromELFSection(
  * Bun's canonical marker. This avoids relying on section metadata entirely.
  */
 function extractBunDataFromELFLoadSegment(
-  elfBinary: LIEF.ELF.Binary
+  elfBinary: LIEF.ELF.Binary,
+  binPath?: string
 ): BunData | null {
   try {
     const loadSegments = elfBinary
@@ -566,13 +597,36 @@ function extractBunDataFromELFLoadSegment(
       .sort((a, b) => Number(b.fileOffset) - Number(a.fileOffset));
 
     for (const segment of loadSegments) {
-      const segmentContent = Buffer.from(segment.content);
+      let segmentContent = Buffer.from(segment.content);
+      if (
+        segmentContent.length === 0 &&
+        binPath &&
+        Number(segment.fileSize) > 0 &&
+        Number(segment.fileOffset) >= 0
+      ) {
+        const fd = fs.openSync(binPath, 'r');
+        try {
+          segmentContent = Buffer.alloc(Number(segment.fileSize));
+          fs.readSync(
+            fd,
+            segmentContent,
+            0,
+            Number(segment.fileSize),
+            Number(segment.fileOffset)
+          );
+          debug(
+            `extractBunDataFromELFLoadSegment: read 0x${Number(segment.fileSize).toString(16)} bytes from file for segment at offset 0x${Number(segment.fileOffset).toString(16)}`
+          );
+        } finally {
+          fs.closeSync(fd);
+        }
+      }
       if (segmentContent.length < 8 + SIZEOF_OFFSETS + BUN_TRAILER.length) {
         continue;
       }
 
       try {
-        const result = extractBunDataFromSection(segmentContent);
+        const result = extractBunDataFromSectionWithPadding(segmentContent);
         debug(
           `extractBunDataFromELFLoadSegment: matched LOAD segment at offset 0x${Number(segment.fileOffset).toString(16)}`
         );
@@ -592,6 +646,26 @@ function extractBunDataFromELFLoadSegment(
     debug('extractBunDataFromELFLoadSegment: failed to extract:', error);
     return null;
   }
+}
+
+function findELFBunLoadSegment(
+  elfBinary: LIEF.ELF.Binary
+): LIEF.ELF.Segment | null {
+  const bunSection = elfBinary.getSection('.bun');
+  if (!bunSection) {
+    return null;
+  }
+
+  return (
+    elfBinary
+      .segments()
+      .find(
+        s =>
+          s.type === 'LOAD' &&
+          s.flags === 4 &&
+          s.virtualAddress === bunSection.virtualAddress
+      ) ?? null
+  );
 }
 
 /**
@@ -724,7 +798,8 @@ function extractBunDataFromPE(peBinary: LIEF.PE.Binary): BunData {
 }
 
 function getBunData(
-  binary: LIEF.ELF.Binary | LIEF.PE.Binary | LIEF.MachO.Binary
+  binary: LIEF.ELF.Binary | LIEF.PE.Binary | LIEF.MachO.Binary,
+  binaryPath?: string
 ): BunData {
   debug(`getBunData: Binary format detected as ${binary.format}`);
 
@@ -739,13 +814,24 @@ function getBunData(
       // metadata; routing repacks through the raw segment rewrite avoids
       // node-lief's ELF writer entirely.
       const elfBinary = binary as LIEF.ELF.Binary;
-      const loadSegmentResult = extractBunDataFromELFLoadSegment(elfBinary);
+      const loadSegmentResult = extractBunDataFromELFLoadSegment(
+        elfBinary,
+        binaryPath
+      );
       if (loadSegmentResult) {
         debug('getBunData: Using ELF LOAD-segment format');
         return loadSegmentResult;
       }
       const sectionResult = extractBunDataFromELFSection(elfBinary);
       if (sectionResult) {
+        const bunSegment = findELFBunLoadSegment(elfBinary);
+        if (bunSegment) {
+          sectionResult.elfLoadSegmentOffset = Number(bunSegment.fileOffset);
+          sectionResult.elfLoadSegmentSize = Number(bunSegment.fileSize);
+          debug(
+            `getBunData: Annotated ELF .bun section result with LOAD segment offset 0x${sectionResult.elfLoadSegmentOffset.toString(16)} size 0x${sectionResult.elfLoadSegmentSize.toString(16)}`
+          );
+        }
         debug('getBunData: Using ELF .bun section format');
         return sectionResult;
       }
@@ -777,7 +863,10 @@ export function extractClaudeJsFromNativeInstallation(
   try {
     LIEF.logging.disable();
     const binary = LIEF.parse(nativeInstallationPath);
-    const { bunOffsets, bunData, moduleStructSize } = getBunData(binary);
+    const { bunOffsets, bunData, moduleStructSize } = getBunData(
+      binary,
+      nativeInstallationPath
+    );
 
     debug(
       `extractClaudeJsFromNativeInstallation: Got bunData, size=${bunData.length} bytes, moduleStructSize=${moduleStructSize}`
@@ -1544,6 +1633,119 @@ function repackELFLoadSegment(
   }
 }
 
+function repackELFRelocatedLoadSegment(
+  elfBinary: LIEF.ELF.Binary,
+  binPath: string,
+  newBunBuffer: Buffer,
+  outputPath: string,
+  sectionHeaderSize: number
+): void {
+  const bunSection = elfBinary.getSection('.bun');
+  if (!bunSection) {
+    throw new Error('.bun section not found');
+  }
+
+  const segments = elfBinary.segments();
+  const bunSegment = segments.find(
+    s =>
+      s.type === 'LOAD' &&
+      s.flags === 4 &&
+      s.virtualAddress === bunSection.virtualAddress
+  );
+
+  if (!bunSegment) {
+    throw new Error('.bun PT_LOAD segment not found for relocation');
+  }
+
+  const originalBinary = fs.readFileSync(binPath);
+  const ePhOff = Number(originalBinary.readBigUInt64LE(0x20));
+  const eShOff = Number(originalBinary.readBigUInt64LE(0x28));
+  const ePhEntSize = originalBinary.readUInt16LE(0x36);
+  const ePhNum = originalBinary.readUInt16LE(0x38);
+  const eShEntSize = originalBinary.readUInt16LE(0x3a);
+  const eShNum = originalBinary.readUInt16LE(0x3c);
+
+  const sectionData = buildSectionData(newBunBuffer, sectionHeaderSize);
+  const align = Number(bunSegment.alignment) || 0x1000;
+  const alignedSectionSize = Math.ceil(sectionData.length / align) * align;
+  const newSegmentOffset = Math.ceil(originalBinary.length / align) * align;
+  const newFileSize = newSegmentOffset + alignedSectionSize;
+  const outputBinary = Buffer.alloc(newFileSize, 0);
+
+  originalBinary.copy(outputBinary, 0, 0, originalBinary.length);
+  sectionData.copy(outputBinary, newSegmentOffset);
+
+  let bunProgramHeaderOffset = -1;
+  for (let i = 0; i < ePhNum; i++) {
+    const phOff = ePhOff + i * ePhEntSize;
+    const pType = outputBinary.readUInt32LE(phOff);
+    const pFlags = outputBinary.readUInt32LE(phOff + 4);
+    const pOffset = Number(outputBinary.readBigUInt64LE(phOff + 8));
+    const pVaddr = outputBinary.readBigUInt64LE(phOff + 16);
+    if (
+      pType === 1 &&
+      pFlags === 4 &&
+      pOffset === Number(bunSegment.fileOffset) &&
+      pVaddr === bunSection.virtualAddress
+    ) {
+      bunProgramHeaderOffset = phOff;
+      break;
+    }
+  }
+
+  if (bunProgramHeaderOffset === -1) {
+    throw new Error('failed to locate .bun PT_LOAD program header');
+  }
+
+  outputBinary.writeBigUInt64LE(
+    BigInt(newSegmentOffset),
+    bunProgramHeaderOffset + 8
+  );
+  outputBinary.writeBigUInt64LE(
+    BigInt(alignedSectionSize),
+    bunProgramHeaderOffset + 32
+  );
+  outputBinary.writeBigUInt64LE(
+    BigInt(alignedSectionSize),
+    bunProgramHeaderOffset + 40
+  );
+
+  let bunSectionHeaderOffset = -1;
+  for (let i = 0; i < eShNum; i++) {
+    const shOff = eShOff + i * eShEntSize;
+    const shAddr = outputBinary.readBigUInt64LE(shOff + 0x10);
+    const shOffset = Number(outputBinary.readBigUInt64LE(shOff + 0x18));
+    if (
+      shAddr === bunSection.virtualAddress &&
+      shOffset === Number(bunSection.offset)
+    ) {
+      bunSectionHeaderOffset = shOff;
+      break;
+    }
+  }
+
+  if (bunSectionHeaderOffset !== -1) {
+    outputBinary.writeBigUInt64LE(
+      BigInt(newSegmentOffset),
+      bunSectionHeaderOffset + 0x18
+    );
+    outputBinary.writeBigUInt64LE(
+      BigInt(sectionData.length),
+      bunSectionHeaderOffset + 0x20
+    );
+  } else {
+    debug(
+      'repackELFRelocatedLoadSegment: .bun section header not found; leaving section table unchanged'
+    );
+  }
+
+  debug(
+    `repackELFRelocatedLoadSegment: relocated .bun from 0x${Number(bunSegment.fileOffset).toString(16)} to 0x${newSegmentOffset.toString(16)}, size ${sectionData.length} (aligned ${alignedSectionSize})`
+  );
+
+  atomicWriteFileBuffer(outputBinary, outputPath, binPath);
+}
+
 /**
  * Repacks a modified claude.js back into the native installation binary.
  *
@@ -1566,7 +1768,7 @@ export function repackNativeInstallation(
   const binary = LIEF.parse(binPath);
 
   // Extract Bun data and rebuild with modified claude.js
-  const bunInfo = getBunData(binary);
+  const bunInfo = getBunData(binary, binPath);
   const {
     bunOffsets,
     bunData,
@@ -1622,11 +1824,34 @@ export function repackNativeInstallation(
           );
           repacked = true;
         } catch (loadSegErr) {
-          // LOAD segment too small for patched payload — fall through to
-          // section-based repack which can resize via LIEF's ELF builder.
           debug(
-            `repackNativeInstallation: LOAD segment repack failed (${loadSegErr instanceof Error ? loadSegErr.message : loadSegErr}), trying section-based fallback`
+            `repackNativeInstallation: LOAD segment repack failed (${loadSegErr instanceof Error ? loadSegErr.message : loadSegErr}), trying relocated LOAD segment fallback`
           );
+          try {
+            if (!sectionHeaderSize) {
+              const sectionProbe = extractBunDataFromELFSection(elfBinary);
+              if (sectionProbe?.sectionHeaderSize) {
+                sectionHeaderSize = sectionProbe.sectionHeaderSize;
+              }
+            }
+            if (!sectionHeaderSize) {
+              throw new Error(
+                'sectionHeaderSize unavailable for relocated LOAD segment fallback'
+              );
+            }
+            repackELFRelocatedLoadSegment(
+              elfBinary,
+              binPath,
+              newBuffer,
+              outputPath,
+              sectionHeaderSize
+            );
+            repacked = true;
+          } catch (relocateErr) {
+            debug(
+              `repackNativeInstallation: relocated LOAD segment fallback failed (${relocateErr instanceof Error ? relocateErr.message : relocateErr}), trying section-based fallback`
+            );
+          }
         }
       }
 

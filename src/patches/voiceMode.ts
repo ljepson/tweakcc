@@ -58,9 +58,6 @@ const patchConciseOutput = (file: string): string | null => {
 
   if (!match || match.index === undefined) {
     // tengu_sotto_voce was removed in CC 2.1.87+ — skip silently
-    console.log(
-      'patch: voiceMode: tengu_sotto_voce not found (removed in this version), skipping'
-    );
     return file;
   }
 

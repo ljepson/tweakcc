@@ -1566,14 +1566,15 @@ export function repackNativeInstallation(
   const binary = LIEF.parse(binPath);
 
   // Extract Bun data and rebuild with modified claude.js
-  let {
+  const bunInfo = getBunData(binary);
+  const {
     bunOffsets,
     bunData,
-    sectionHeaderSize,
     elfLoadSegmentOffset,
     elfLoadSegmentSize,
     moduleStructSize,
-  } = getBunData(binary);
+  } = bunInfo;
+  let { sectionHeaderSize } = bunInfo;
   const newBuffer = rebuildBunData(
     bunData,
     bunOffsets,

@@ -12,7 +12,7 @@ describe('microcompactFallback', () => {
     expect(result).toContain(
       'enabled:globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false'
     );
-    expect(result).toContain('[TIME-BASED MC]');
+    expect(result).toContain('TIME-BASED MC');
     expect(result).toContain(
       "{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}"
     );
@@ -21,7 +21,7 @@ describe('microcompactFallback', () => {
   it('should no-op when the patch is already present', () => {
     const alreadyPatched =
       'var W7K=G(()=>{e8();Gg4={enabled:globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false,gapThresholdMinutes:60,keepRecent:5}});' +
-      "function Ng4(H,$){let w=[H,$];console.log('[TIME-BASED MC]');return CTH(),qr(),{messages:[...w,{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}]}}";
+      "function Ng4(H,$){let w=[H,$];console.log('TIME-BASED MC');return CTH(),qr(),{messages:[...w,{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}]}}";
 
     expect(writeMicrocompactFallback(alreadyPatched)).toBe(alreadyPatched);
   });

@@ -7,7 +7,7 @@ export const writeMicrocompactFallback = (oldFile: string): string | null => {
     oldFile.includes(
       'globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false'
     ) &&
-    oldFile.includes('[TIME-BASED MC]') &&
+    oldFile.includes('TIME-BASED MC') &&
     oldFile.includes(
       "{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}"
     )

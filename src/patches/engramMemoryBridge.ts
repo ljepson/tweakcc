@@ -3,17 +3,11 @@
 import { showDiff } from './index';
 
 export const writeEngramMemoryBridge = (oldFile: string): string | null => {
-  const afterGateFile = oldFile; // just assigning for now
-
-  // We are essentially checking if the minified code already has engram permission.
-  const hasEngramPermission = afterGateFile.includes(
-    'mcp__engram__engram_store'
-  );
+  const hasEngramPermission = oldFile.includes('mcp__engram__engram_store');
 
   const permissionPattern =
-    /if\(\(\$\.name===[$\w]+\|\|\$\.name===[$\w]+\)&&\"file_path\"\s*in q\)\{let ([$\w]+)=q\.file_path;if\(typeof \1===\"string\"&&[$\w]+\(\1\)\)return\{behavior:\"allow\",updatedInput:q\}\}[^}]*return [$\w]+\(\$,`only \$\{[$\w]+\}, \$\{[$\w]+\\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{H\} are allowed`\)\}\}/;
-
-  const permissionMatch = afterGateFile.match(permissionPattern);
+    /(if\(\(\$\.name===[$\w]+\|\|\$\.name===[$\w]+\)&&"file_path"\s*in q\)\{let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\$,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{H\} are allowed`\)\}\})/;
+  const permissionMatch = oldFile.match(permissionPattern);
 
   if (
     !hasEngramPermission &&
@@ -25,34 +19,30 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
     return null;
   }
 
-  let afterPermissionFile = afterGateFile;
+  let afterPermissionFile = oldFile;
 
   if (!hasEngramPermission) {
-    const permissionNeedle = permissionMatch![0];
-    const permissionIndex = permissionMatch!.index!;
-
-    // We will parse out the last bit of the needle so we can replace just the return.
-    const lastReturnIndex = permissionNeedle.lastIndexOf('return');
-    const firstPart = permissionNeedle.slice(0, lastReturnIndex);
-    const lastPart = permissionNeedle.slice(lastReturnIndex);
-
-    // E.g. "return $_7($,`only ${Iq} ... allowed`)}}"
+    const permissionGroups = permissionMatch as RegExpMatchArray & {
+      index: number;
+    };
+    const [permissionNeedle, allowWrites, denyTail] = permissionGroups;
+    const permissionIndex = permissionGroups.index;
     const modifiedLastPart =
       'if($.name==="mcp__engram__engram_store"&&typeof q==="object"&&q!==null){let t=q.entry_type,p=q.project_name,l=q.title,c=q.content;if((t==="decision"||t==="discovery"||t==="lesson"||t==="diagnostic")&&typeof p==="string"&&typeof l==="string"&&typeof c==="string")return{behavior:"allow",updatedInput:q};return {behavior:"deny",message:"Only structured Engram saves are allowed",decisionReason:{type:"other",reason:"Only structured Engram saves are allowed"}}}' +
-      lastPart.replace(
+      denyTail.replace(
         'are allowed`',
         'and mcp__engram__engram_store are allowed`'
       );
 
-    const permissionReplacement = firstPart + modifiedLastPart;
+    const permissionReplacement = allowWrites + modifiedLastPart;
 
     afterPermissionFile =
-      afterGateFile.slice(0, permissionIndex) +
+      oldFile.slice(0, permissionIndex) +
       permissionReplacement +
-      afterGateFile.slice(permissionIndex + permissionNeedle.length);
+      oldFile.slice(permissionIndex + permissionNeedle.length);
 
     showDiff(
-      afterGateFile,
+      oldFile,
       afterPermissionFile,
       permissionReplacement,
       permissionIndex,
@@ -61,7 +51,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const promptPattern =
-    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \(ls\/find\/cat\/stat\/wc\/head\/tail and similar\), and \$\{[$\w]+\}\/\$\{[$\w]+\\} for paths inside the memory directory only\. \$\{[$\w]+\} rm is not permitted\. All other tools \\u2014 MCP, Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
+    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \(ls\/find\/cat\/stat\/wc\/head\/tail and similar\), and \$\{[$\w]+\}\/\$\{[$\w]+\} for paths inside the memory directory only\. \$\{[$\w]+\} rm is not permitted\. All other tools \\u2014 MCP, Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
   const promptMatch = afterPermissionFile.match(promptPattern);
   const promptIndex = promptMatch ? promptMatch.index : -1;
 
@@ -116,7 +106,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
     const gateIndex = gateMatch!.index!;
     const gateReplacement = gateNeedle.replace(
       'if(!n4())return;if(A_())return;',
-      'let w=O.toolUseContext.getAppState().mcp.clients;if(!w.some((c:any)=>c.name==="engram"&&c.type==="connected"))return;if(!n4())return;if(A_())return;'
+      'let w=O.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!n4())return;if(A_())return;'
     );
     finalFile =
       afterPromptFile.slice(0, gateIndex) +

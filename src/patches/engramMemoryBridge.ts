@@ -4,6 +4,16 @@ import { showDiff } from './index';
 
 export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   const hasEngramPermission = oldFile.includes('mcp__engram__engram_store');
+  const hasEngramPrompt = oldFile.includes(
+    'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
+  );
+  const hasEngramGate = oldFile.includes(
+    'c.name==="engram"&&c.type==="connected"'
+  );
+
+  if (hasEngramPermission && hasEngramPrompt && hasEngramGate) {
+    return oldFile;
+  }
 
   const permissionPattern =
     /(if\(\(\$\.name===[$\w]+\|\|\$\.name===[$\w]+\)&&"file_path"\s*in q\)\{let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\$,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{H\} are allowed`\)\}\})/;
@@ -51,11 +61,11 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const promptPattern =
-    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \(ls\/find\/cat\/stat\/wc\/head\/tail and similar\), and \$\{[$\w]+\}\/\$\{[$\w]+\} for paths inside the memory directory only\. \$\{[$\w]+\} rm is not permitted\. All other tools \\u2014 MCP, Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
+    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \(ls\/find\/cat\/stat\/wc\/head\/tail and similar\), and \$\{[$\w]+\}\/\$\{[$\w]+\} for paths inside the memory directory only\. \$\{[$\w]+\} rm is not permitted\.[^`]*?All other tools \\u2014 [^`]*?Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
   const promptMatch = afterPermissionFile.match(promptPattern);
   const promptIndex = promptMatch ? promptMatch.index : -1;
 
-  if (promptIndex === -1) {
+  if (!hasEngramPrompt && promptIndex === -1) {
     console.error(
       'patch: engramMemoryBridge: failed to find extract-memories prompt tools section'
     );
@@ -63,8 +73,8 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   let afterPromptFile = afterPermissionFile;
-  const promptNeedle = promptMatch![0];
-  if (!promptNeedle.includes('mcp__engram__engram_store')) {
+  const promptNeedle = promptMatch?.[0];
+  if (!hasEngramPrompt && promptNeedle) {
     const promptReplacement = promptNeedle
       .replace(
         'rm is not permitted.',
@@ -87,11 +97,11 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const gatePattern =
-    /async function z\(O,Y\)\{if\(O\.toolUseContext\.agentId\)return;if\(![$\w]+\("tengu_passport_quail",!1\)\)return;if\(!n4\(\)\)return;if\(A_\(\)\)return;/;
+    /async function z\(O,Y\)\{if\(O\.toolUseContext\.agentId\)return;if\(![$\w]+\("tengu_passport_quail",!1\)\)return;(?:let [$\w]+=O\.toolUseContext\.getAppState\(\)\.mcp\.clients;if\(![$\w]+\.some\(c=>c\.name==="engram"&&c\.type==="connected"\)\)return;)?if\(!n4\(\)\)return;if\(A_\(\)\)return;/;
   const gateMatch = afterPromptFile.match(gatePattern);
 
   if (
-    !afterPromptFile.includes('c.name==="engram"&&c.type==="connected"') &&
+    !hasEngramGate &&
     (!gateMatch || gateMatch.index === undefined)
   ) {
     console.error(
@@ -101,7 +111,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   let finalFile = afterPromptFile;
-  if (!afterPromptFile.includes('c.name==="engram"&&c.type==="connected"')) {
+  if (!hasEngramGate) {
     const gateNeedle = gateMatch![0];
     const gateIndex = gateMatch!.index!;
     const gateReplacement = gateNeedle.replace(

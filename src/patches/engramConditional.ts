@@ -3,9 +3,17 @@
 import { showDiff } from './index';
 
 export const writeEngramConditional = (oldFile: string): string | null => {
-  // Step 1: Find the u$ function (checkGate)
+  if (
+    oldFile.includes('globalThis.__engramAvailable') &&
+    oldFile.includes('H==="tengu_passport_quail"||H==="tengu_moth_copse"')
+  ) {
+    return oldFile;
+  }
+
+  // Step 1: Find the feature gate helper and insert our conditional check
+  // immediately after the function opening brace.
   const pattern =
-    /function u\$\(H,\$\)\{let q=\$ZH\(\);if\(q&&H in q\)return q\[H\];let K=qZH\(\);if\(K&&H in K\)return K\[H\];if\(!tn\(\)\)return \$;/;
+    /function u\$\(([$\w]+),([$\w]+)\)\{let ([$\w]+)=\$ZH\(\);if\(\3&&\1 in \3\)return \3\[\1\];let ([$\w]+)=qZH\(\);if\(\4&&\1 in \4\)return \4\[\1\];if\(!tn\(\)\)return \2;/;
   const match = oldFile.match(pattern);
 
   if (!match || match.index === undefined) {
@@ -16,14 +24,14 @@ export const writeEngramConditional = (oldFile: string): string | null => {
   }
 
   const uFnName = 'u$';
-  const gateNameVar = 'H';
-  const defaultValVar = '$';
+  const gateNameVar = match[1];
+  const defaultValVar = match[2];
 
   // We want to insert our conditional check at the very beginning of the function
   const replacement =
     `function ${uFnName}(${gateNameVar},${defaultValVar}){` +
-    `if(globalThis.__engramAvailable&&( ${gateNameVar}==="tengu_passport_quail"||${gateNameVar}==="tengu_moth_copse" ))return true;` +
-    `if(globalThis.__engramAvailable===false&&( ${gateNameVar}==="tengu_passport_quail"||${gateNameVar}==="tengu_moth_copse" ))return false;` +
+    `if(globalThis.__engramAvailable&&(${gateNameVar}==="tengu_passport_quail"||${gateNameVar}==="tengu_moth_copse"))return true;` +
+    `if(globalThis.__engramAvailable===false&&(${gateNameVar}==="tengu_passport_quail"||${gateNameVar}==="tengu_moth_copse"))return false;` +
     match[0].slice(
       `function ${uFnName}(${gateNameVar},${defaultValVar}){`.length
     );

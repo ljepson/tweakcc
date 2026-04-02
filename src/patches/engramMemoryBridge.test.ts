@@ -37,6 +37,25 @@ describe('engramMemoryBridge', () => {
     );
   });
 
+  it('returns unchanged when the bundle is already patched', () => {
+    const alreadyPatched =
+      mockAutoMemSnippet
+        .replace(
+          'return $_7($,`only ${Iq}, ${i4}, ${e9}, read-only ${zq}, and ${MK}/${H_} within ${H} are allowed`)}}',
+          'if($.name==="mcp__engram__engram_store"&&typeof q==="object"&&q!==null){let t=q.entry_type,p=q.project_name,l=q.title,c=q.content;if((t==="decision"||t==="discovery"||t==="lesson"||t==="diagnostic")&&typeof p==="string"&&typeof l==="string"&&typeof c==="string")return{behavior:"allow",updatedInput:q};return {behavior:"deny",message:"Only structured Engram saves are allowed",decisionReason:{type:"other",reason:"Only structured Engram saves are allowed"}}}return $_7($,`only ${Iq}, ${i4}, ${e9}, read-only ${zq}, and ${MK}/${H_} within ${H} and mcp__engram__engram_store are allowed`)}}'
+        )
+        .replace(
+          'All other tools \\u2014 MCP, Agent, write-capable ${zq}, etc \\u2014 will be denied.',
+          'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages. All other tools \\u2014 other MCP tools, Agent, write-capable ${zq}, etc \\u2014 will be denied.'
+        )
+        .replace(
+          'if(!n4())return;if(A_())return;',
+          'let w=O.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!n4())return;if(A_())return;'
+        );
+
+    expect(writeEngramMemoryBridge(alreadyPatched)).toBe(alreadyPatched);
+  });
+
   it('returns null when the auto-memory gate is absent', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const result = writeEngramMemoryBridge('function nope(){}');

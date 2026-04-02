@@ -33,7 +33,13 @@ describe('writeContextCollapse', () => {
 
     it('should resolve context limit inside the apply helper', () => {
       const result = writeContextCollapse(mockBundle);
-      expect(result).toContain('let limit=+v?.getAppState?.()?.contextLimit;');
+      expect(result).toContain(
+        'let testLimit=+process.env.TWEAKCC_CONTEXT_COLLAPSE_TEST_LIMIT;'
+      );
+      expect(result).toContain(
+        'let limit=Number.isFinite(testLimit)&&testLimit>0?testLimit:+v?.getAppState?.()?.contextLimit;'
+      );
+      expect(result).toContain('TWEAKCC_CONTEXT_COLLAPSE_TEST_LIMIT');
       expect(result).toContain('CLAUDE_CODE_CONTEXT_LIMIT');
     });
 

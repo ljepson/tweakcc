@@ -61,7 +61,8 @@ function __tweakccProjectCollapseView(F,commits,staged,ratio){
 const APPLY_COLLAPSES_HELPER = `
 async function __tweakccApplyCollapses(F,v,commits,staged,enabled,nativeExceeds,nativeBlocking){
   if(!enabled)return{messages:F,commits,staged,ratio:0};
-  let limit=+v?.getAppState?.()?.contextLimit;
+  let testLimit=+process.env.TWEAKCC_CONTEXT_COLLAPSE_TEST_LIMIT;
+  let limit=Number.isFinite(testLimit)&&testLimit>0?testLimit:+v?.getAppState?.()?.contextLimit;
   if(!(Number.isFinite(limit)&&limit>0))limit=+process.env.CLAUDE_CODE_CONTEXT_LIMIT||200000;
   let ratio=nativeBlocking?0.96:nativeExceeds?0.93:JSON.stringify(F).length/4/limit;
   if(ratio<=0.90)return{messages:__tweakccProjectCollapseView(F,commits,staged,ratio),commits,staged,ratio};

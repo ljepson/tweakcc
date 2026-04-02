@@ -47,10 +47,19 @@ describe('verificationAgentAvailability', () => {
 });
 
 describe('autoLaunchVerificationAgent', () => {
+  it('should inject a syntactically valid permission callback', () => {
+    const result = writeAutoLaunchVerificationAgent(mockTaskVerification);
+    expect(result).toContain(`async(O,Y)=>({behavior:'allow',updatedInput:Y})`);
+    expect(result).toContain(
+      `prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence."`
+    );
+    expect(result).toContain(`await $2(w)`);
+  });
+
   it('should no-op when verification auto-launch is already present', () => {
     const alreadyPatched = mockTaskVerification.replace(
-      'verificationNudgeNeeded:z',
-      'verificationNudgeNeeded:z,subagent_type:"verification"'
+      'mapToolResultToToolResultBlockParam({verificationNudgeNeeded:H},$){return H}',
+      `let __tweakccVerifierTool=Y.options.tools.find((O)=>O.name==="Agent");await __tweakccVerifierTool.call({description:'Verify recently completed task list'});mapToolResultToToolResultBlockParam({verificationNudgeNeeded:H},$){return H}`
     );
     const result = writeAutoLaunchVerificationAgent(alreadyPatched);
     expect(result).toBe(alreadyPatched);

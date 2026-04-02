@@ -75,8 +75,10 @@ export const writeAutoLaunchVerificationAgent = (
   oldFile: string
 ): string | null => {
   if (
-    oldFile.includes('subagent_type:"verification"') ||
-    oldFile.includes("subagent_type:'verification'")
+    oldFile.includes("description:'Verify recent completed work'") ||
+    oldFile.includes("description:'Verify recently completed task list'") ||
+    oldFile.includes('description:"Verify recent completed work"') ||
+    oldFile.includes('description:"Verify recently completed task list"')
   ) {
     return oldFile;
   }
@@ -84,25 +86,25 @@ export const writeAutoLaunchVerificationAgent = (
   let newFile = oldFile;
 
   const todoPattern =
-    /async call\(\{todos:([$\w]+)\},([$\w]+)\)\{let ([$\w]+)=\2\.getAppState\(\),([$\w]+)=\2\.agentId\?\?V\$\(\),([$\w]+)=\3\.todos\[\4\]\?\?\[],([$\w]+)=\1\.every\(\(\w+\)=>\w+\.status===["']completed["']\)\?\[]:\1,([$\w]+)=!1;return \2\.setAppState\(\(\w+\)=>\(\{.*?\}\)\),\{data:\{oldTodos:\5,newTodos:\1,verificationNudgeNeeded:\7\}\}\}/;
+    /([$\w]+)=!1;return ([$\w]+)\.setAppState\(\(([$\w]+)\)=>\(\{\.\.\.\3,todos:\{\.\.\.\3\.todos,\[([$\w]+)\]:([$\w]+)\}\}\)\),\{data:\{oldTodos:([$\w]+),newTodos:([$\w]+),verificationNudgeNeeded:\1\}\}/;
   const todoMatch = newFile.match(todoPattern);
 
   if (!todoMatch || todoMatch.index === undefined) {
     console.error(
-      'patch: autoLaunchVerificationAgent: failed to find TodoWrite call body'
+      'patch: autoLaunchVerificationAgent: failed to find TodoWrite verification block'
     );
     return null;
   }
 
-  const todosVar = todoMatch[1];
+  const nudgeVar = todoMatch[1];
   const contextVar = todoMatch[2];
-  const appStateVar = todoMatch[3];
+  const prevStateVar = todoMatch[3];
   const todoKeyVar = todoMatch[4];
-  const oldTodosVar = todoMatch[5];
-  const newTodosVar = todoMatch[6];
-  const nudgeVar = todoMatch[7];
+  const newTodosVar = todoMatch[5];
+  const oldTodosVar = todoMatch[6];
+  const todosVar = todoMatch[7];
 
-  const todoReplacement = `async call({todos:${todosVar}},${contextVar}){let ${appStateVar}=${contextVar}.getAppState(),${todoKeyVar}=${contextVar}.agentId??V$(),${oldTodosVar}=${appStateVar}.todos[${todoKeyVar}]??[],${newTodosVar}=${todosVar}.every((t)=\x3et.status==='completed')?[]:${todosVar},${nudgeVar}=!1;if(!${contextVar}.agentId&&${todosVar}.every((t)=\x3et.status==='completed')&&${todosVar}.length>=3&&!${todosVar}.some((t)=\x3e/verif/i.test(t.content))){let __tweakccVerifierTool=${contextVar}.options.tools.find((H)=>H.name==='Agent');if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==='function')try{await __tweakccVerifierTool.call({description:'Verify recent completed work',prompt:'Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.',subagent_type:'verification',model:'haiku',run_in_background:!0},${contextVar},async(H,$)=>\x3e({behavior:'allow',updatedInput:$,decisionReason:{type:'mode',mode:'default'}}))}catch{${nudgeVar}=!0}else ${nudgeVar}=!0}return ${contextVar}.setAppState((s)=\x3e({...s,todos:{...s.todos,[${todoKeyVar}]:${newTodosVar}}})),{data:{oldTodos:${oldTodosVar},newTodos:${todosVar},verificationNudgeNeeded:${nudgeVar}}}}`;
+  const todoReplacement = `${nudgeVar}=!1;if(!${contextVar}.agentId&&${todosVar}.every((O)=>O.status==="completed")&&${todosVar}.length>=3&&!${todosVar}.some((O)=>/verif/i.test(O.content))){let __tweakccVerifierTool=${contextVar}.options.tools.find((O)=>O.name==="Agent");if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==="function")try{await __tweakccVerifierTool.call({description:'Verify recent completed work',prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.",subagent_type:'verification',model:'haiku',run_in_background:!0},${contextVar},async(O,Y)=>({behavior:'allow',updatedInput:Y}))}catch{${nudgeVar}=!0}else ${nudgeVar}=!0}return ${contextVar}.setAppState((${prevStateVar})=>({...${prevStateVar},todos:{...${prevStateVar}.todos,[${todoKeyVar}]:${newTodosVar}}})),{data:{oldTodos:${oldTodosVar},newTodos:${todosVar},verificationNudgeNeeded:${nudgeVar}}}`;
 
   let startIndex = todoMatch.index;
   let endIndex = startIndex + todoMatch[0].length;
@@ -127,7 +129,7 @@ export const writeAutoLaunchVerificationAgent = (
   const updatesVar = taskMatch[4];
   const existingTaskVar = taskMatch[5];
 
-  const taskReplacement = `let ${taskNudgeVar}=!1;if(${updatesVar}.status==='completed'&&!Y.agentId){let __tweakccAllTasks=await $2(w),__tweakccAllDone=__tweakccAllTasks.every((H)=>H.status==='completed');if(__tweakccAllDone&&__tweakccAllTasks.length>=3&&!__tweakccAllTasks.some((H)=>/verif/i.test(H.subject))){let __tweakccVerifierTool=Y.options.tools.find((H)=>H.name==='Agent');if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==='function')try{await __tweakccVerifierTool.call({description:'Verify recently completed task list',prompt:'Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.',subagent_type:'verification',model:'haiku',run_in_background:!0},Y,async(H,$)=>\x3e({behavior:'allow',updatedInput:$,decisionReason:{type:'mode',mode:'default'}}))}catch{${taskNudgeVar}=!0}else ${taskNudgeVar}=!0}}return{data:{success:!0,taskId:${taskIdVar},updatedFields:${updatedFieldsVar},statusChange:${updatesVar}.status!==void 0?{from:${existingTaskVar}.status,to:${updatesVar}.status}:void 0,verificationNudgeNeeded:${taskNudgeVar}}}`;
+  const taskReplacement = `let ${taskNudgeVar}=!1;if(${updatesVar}.status==="completed"&&!Y.agentId){let __tweakccAllTasks=await $2(w),__tweakccAllDone=__tweakccAllTasks.every((O)=>O.status==="completed");if(__tweakccAllDone&&__tweakccAllTasks.length>=3&&!__tweakccAllTasks.some((O)=>/verif/i.test(O.subject))){let __tweakccVerifierTool=Y.options.tools.find((O)=>O.name==="Agent");if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==="function")try{await __tweakccVerifierTool.call({description:'Verify recently completed task list',prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.",subagent_type:'verification',model:'haiku',run_in_background:!0},Y,async(O,J)=>({behavior:'allow',updatedInput:J}))}catch{${taskNudgeVar}=!0}else ${taskNudgeVar}=!0}}return{data:{success:!0,taskId:${taskIdVar},updatedFields:${updatedFieldsVar},statusChange:${updatesVar}.status!==void 0?{from:${existingTaskVar}.status,to:${updatesVar}.status}:void 0,verificationNudgeNeeded:${taskNudgeVar}}}`;
 
   startIndex = taskMatch.index;
   endIndex = startIndex + taskMatch[0].length;

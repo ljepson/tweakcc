@@ -441,6 +441,7 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.FEATURES,
     description:
       'Autonomous background loop with focus-based pacing and cost tracking',
+    supportedVersions: ['2.1.89'],
   },
   {
     id: 'allow-custom-agent-models',

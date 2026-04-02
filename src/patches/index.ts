@@ -79,6 +79,7 @@ import { writeChannelsMode } from './channelsMode';
 import { writeGrowthBookAntParity } from './growthBookAntParity';
 import { writePlanModeInterview } from './planModeInterview';
 import { writeReactiveCompact } from './reactiveCompact';
+import { writeContextCollapse } from './contextCollapse';
 import { writeEngramMemoryBridge } from './engramMemoryBridge';
 import { writeEngramConditional } from './engramConditional';
 import {
@@ -395,6 +396,12 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.FEATURES,
     description:
       'Retry prompt-too-long failures by invoking the built-in compaction path',
+  },
+  {
+    id: 'context-collapse',
+    name: 'Context collapse',
+    group: PatchGroup.FEATURES,
+    description: 'Archive-based context management',
   },
   {
     id: 'engram-conditional',
@@ -928,6 +935,10 @@ export const applyCustomization = async (
     'reactive-compact': {
       fn: c => writeReactiveCompact(c),
       condition: !!config.settings.antParity?.enableReactiveCompact,
+    },
+    'context-collapse': {
+      fn: c => writeContextCollapse(c),
+      condition: !!config.settings.misc?.enableContextCollapse,
     },
     'verification-agent': {
       fn: c => writeVerificationAgentAvailability(c),

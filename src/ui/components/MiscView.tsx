@@ -73,6 +73,7 @@ export function MiscView({ onSubmit }: MiscViewProps) {
     enableSwarmMode: true,
     enableSessionMemory: true,
     enableTimeBasedMicrocompact: false,
+    enableContextCollapse: false,
     enableRememberSkill: false,
     tokenCountRounding: null as number | null,
     autoAcceptPlanMode: false,
@@ -548,6 +549,20 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.enableTimeBasedMicrocompact =
               !settings.misc!.enableTimeBasedMicrocompact;
+          });
+        },
+      },
+      {
+        id: 'enableContextCollapse',
+        title: 'Enable Context Collapse',
+        description:
+          'Archive-based context management to stage and collapse older messages when hitting context limits',
+        getValue: () => settings.misc?.enableContextCollapse ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.enableContextCollapse =
+              !settings.misc!.enableContextCollapse;
           });
         },
       },

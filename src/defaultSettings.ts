@@ -707,6 +707,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enableSwarmMode: true,
     enableSessionMemory: true,
     enableTimeBasedMicrocompact: false,
+    enableContextCollapse: false,
     enableRememberSkill: false,
     tokenCountRounding: null,
     autoAcceptPlanMode: false,

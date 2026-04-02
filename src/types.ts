@@ -125,6 +125,7 @@ export interface MiscConfig {
   enableSwarmMode: boolean;
   enableSessionMemory: boolean;
   enableTimeBasedMicrocompact: boolean;
+  enableContextCollapse: boolean;
   enableRememberSkill: boolean;
   tokenCountRounding: number | null;
   autoAcceptPlanMode: boolean;

@@ -1,0 +1,129 @@
+// Please see the note about writing patches in ./index
+
+import { showDiff } from './index';
+
+export const writeVerificationAgentAvailability = (
+  oldFile: string
+): string | null => {
+  const verifierPromptPattern =
+    /var ([$\w]+);var [$\w]+=G\(\(\)=>\{dY\(\);wA\(\);\1=`You are the verification specialist\./;
+  const verifierPromptMatch = oldFile.match(verifierPromptPattern);
+
+  if (!verifierPromptMatch) {
+    console.error(
+      'patch: verificationAgentAvailability: failed to find verifier prompt'
+    );
+    return null;
+  }
+
+  const verifierPromptVar = verifierPromptMatch[1];
+
+  // Binary: function hV$(){if(dH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&Q6())return[];let H=[dd,CKK];if(RnH())H.push(gd,EV$);H.push({...dd,agentType:"verification"...
+  const builtInAgentsPattern =
+    /function ([$\w]+)\(\)\{if\(dH\(process\.env\.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS\)&&Q6\(\)\)return\[\];let ([$\w]+)=\[([$\w]+),([$\w]+)\];if\(([$\w]+)\(\)\)\2\.push\(([$\w]+),([$\w]+)\);(\2\.push\(\{\.\.\.\3,agentType:'verification')/g;
+  const builtInAgentsMatch = Array.from(
+    oldFile.matchAll(builtInAgentsPattern)
+  )[0];
+
+  if (!builtInAgentsMatch || builtInAgentsMatch.index === undefined) {
+    console.error(
+      'patch: verificationAgentAvailability: failed to find built-in agents function'
+    );
+    return null;
+  }
+
+  const fnName = builtInAgentsMatch[1];
+  const agentsVar = builtInAgentsMatch[2];
+  const generalAgentVar = builtInAgentsMatch[3];
+  const statuslineAgentVar = builtInAgentsMatch[4];
+  const explorePlanGateFn = builtInAgentsMatch[5];
+  const exploreAgentVar = builtInAgentsMatch[6];
+  const planAgentVar = builtInAgentsMatch[7];
+
+  // In 2.1.89, the verification agent is ALREADY partially in H.push,
+  // but we want to ensure it is always there and has the right prompt.
+  // We will rewrite the function to be clean.
+  const replacement = `function ${fnName}(){if(dH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&Q6())return[];let ${agentsVar}=[${generalAgentVar},${statuslineAgentVar}];if(${explorePlanGateFn}())${agentsVar}.push(${exploreAgentVar},${planAgentVar});${agentsVar}.push({...${generalAgentVar},agentType:'verification',whenToUse:'Use this agent to verify that implementation work is correct before reporting completion. Invoke after non-trivial tasks (3+ file edits, backend/API changes, infrastructure changes).',color:'red',background:!0,model:'inherit',disallowedTools:[OK,mE,MK,H_,ZL],getSystemPrompt:()=>${verifierPromptVar}});if(process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-ts'&&process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-py'&&process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-cli'){let RKK=Array.from(arguments)[0];if(RKK)${agentsVar}.push(RKK)}return ${agentsVar}}`;
+
+  const startIndex = builtInAgentsMatch.index;
+  const endIndex = startIndex + builtInAgentsMatch[0].length;
+  // We need to find the closing brace of the function.
+  let searchIndex = endIndex;
+  let braceCount = 1;
+  while (braceCount > 0 && searchIndex < oldFile.length) {
+    if (oldFile[searchIndex] === '{') braceCount++;
+    else if (oldFile[searchIndex] === '}') braceCount--;
+    searchIndex++;
+  }
+
+  const newFile =
+    oldFile.slice(0, startIndex) + replacement + oldFile.slice(searchIndex);
+
+  showDiff(
+    oldFile,
+    newFile,
+    'Verification Agent Availability',
+    startIndex,
+    searchIndex
+  );
+  return newFile;
+};
+
+export const writeAutoLaunchVerificationAgent = (
+  oldFile: string
+): string | null => {
+  let newFile = oldFile;
+
+  const todoPattern =
+    /async call\(\{todos:([$\w]+)\},([$\w]+)\)\{let ([$\w]+)=\2\.getAppState\(\),([$\w]+)=\2\.agentId\?\?V\$\(\),([$\w]+)=\3\.todos\[\4\]\?\?\[],([$\w]+)=\1\.every\(\(\w+\)=>\w+\.status==='completed'\)\?\[]:\1,([$\w]+)=!1;return \2\.setAppState\(\(\w+\)=>\(\{\.\.\.\w+,todos:\{\.\.\.\w+\.todos,\[\4\]:\6\}\}\)\),\{data:\{oldTodos:\5,newTodos:\1,verificationNudgeNeeded:\7\}\}\}/;
+  const todoMatch = newFile.match(todoPattern);
+
+  if (!todoMatch || todoMatch.index === undefined) {
+    console.error(
+      'patch: autoLaunchVerificationAgent: failed to find TodoWrite call body'
+    );
+    return null;
+  }
+
+  const todosVar = todoMatch[1];
+  const contextVar = todoMatch[2];
+  const appStateVar = todoMatch[3];
+  const todoKeyVar = todoMatch[4];
+  const oldTodosVar = todoMatch[5];
+  const newTodosVar = todoMatch[6];
+  const nudgeVar = todoMatch[7];
+
+  const todoReplacement = `async call({todos:${todosVar}},${contextVar}){let ${appStateVar}=${contextVar}.getAppState(),${todoKeyVar}=${contextVar}.agentId??V$(),${oldTodosVar}=${appStateVar}.todos[${todoKeyVar}]??[],${newTodosVar}=${todosVar}.every((t)=\x3et.status==='completed')?[]:${todosVar},${nudgeVar}=!1;if(!${contextVar}.agentId&&${todosVar}.every((t)=\x3et.status==='completed')&&${todosVar}.length>=3&&!${todosVar}.some((t)=\x3e/verif/i.test(t.content))){let __tweakccVerifierTool=${contextVar}.options.tools.find((H)=>H.name==='Agent');if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==='function')try{await __tweakccVerifierTool.call({description:'Verify recent completed work',prompt:'Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.',subagent_type:'verification',model:'haiku',run_in_background:!0},${contextVar},async(H,$)=>\x3e({behavior:'allow',updatedInput:$,decisionReason:{type:'mode',mode:'default'}}))}catch{${nudgeVar}=!0}else ${nudgeVar}=!0}return ${contextVar}.setAppState((s)=\x3e({...s,todos:{...s.todos,[${todoKeyVar}]:${newTodosVar}}})),{data:{oldTodos:${oldTodosVar},newTodos:${todosVar},verificationNudgeNeeded:${nudgeVar}}}}`;
+
+  let startIndex = todoMatch.index;
+  let endIndex = startIndex + todoMatch[0].length;
+  newFile =
+    newFile.slice(0, startIndex) + todoReplacement + newFile.slice(endIndex);
+  showDiff(oldFile, newFile, todoReplacement, startIndex, endIndex);
+
+  const taskPattern =
+    /let ([$\w]+)=!1;return\{data:\{success:!0,taskId:([$\w]+),updatedFields:([$\w]+),statusChange:([$\w]+)\.status!==void 0\?\{from:([$\w]+)\.status,to:\4\.status\}:void 0,verificationNudgeNeeded:\1\}\}/;
+  const taskMatch = newFile.match(taskPattern);
+
+  if (!taskMatch || taskMatch.index === undefined) {
+    console.error(
+      'patch: autoLaunchVerificationAgent: failed to find TaskUpdate verification nudge block'
+    );
+    return null;
+  }
+
+  const taskNudgeVar = taskMatch[1];
+  const taskIdVar = taskMatch[2];
+  const updatedFieldsVar = taskMatch[3];
+  const updatesVar = taskMatch[4];
+  const existingTaskVar = taskMatch[5];
+
+  const taskReplacement = `let ${taskNudgeVar}=!1;if(${updatesVar}.status==='completed'&&!Y.agentId){let __tweakccAllTasks=await $2(w),__tweakccAllDone=__tweakccAllTasks.every((H)=>H.status==='completed');if(__tweakccAllDone&&__tweakccAllTasks.length>=3&&!__tweakccAllTasks.some((H)=>/verif/i.test(H.subject))){let __tweakccVerifierTool=Y.options.tools.find((H)=>H.name==='Agent');if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==='function')try{await __tweakccVerifierTool.call({description:'Verify recently completed task list',prompt:'Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.',subagent_type:'verification',model:'haiku',run_in_background:!0},Y,async(H,$)=>\x3e({behavior:'allow',updatedInput:$,decisionReason:{type:'mode',mode:'default'}}))}catch{${taskNudgeVar}=!0}else ${taskNudgeVar}=!0}}return{data:{success:!0,taskId:${taskIdVar},updatedFields:${updatedFieldsVar},statusChange:${updatesVar}.status!==void 0?{from:${existingTaskVar}.status,to:${updatesVar}.status}:void 0,verificationNudgeNeeded:${taskNudgeVar}}}`;
+
+  startIndex = taskMatch.index;
+  endIndex = startIndex + taskMatch[0].length;
+  const afterTaskFile =
+    newFile.slice(0, startIndex) + taskReplacement + newFile.slice(endIndex);
+  showDiff(newFile, afterTaskFile, taskReplacement, startIndex, endIndex);
+  return afterTaskFile;
+};

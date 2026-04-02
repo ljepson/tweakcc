@@ -61,6 +61,7 @@ import { writeSuppressLineNumbers } from './suppressLineNumbers';
 import { writeSuppressRateLimitOptions } from './suppressRateLimitOptions';
 import { writeSessionMemory } from './sessionMemory';
 import { writeRememberSkill } from './rememberSkill';
+import { writeMicrocompactFallback } from './microcompactFallback';
 import { writeThinkingBlockStyling } from './thinkingBlockStyling';
 import { writeMcpNonBlocking, writeMcpBatchSize } from './mcpStartup';
 import { writeStatuslineUpdateThrottle } from './statuslineUpdateThrottle';
@@ -77,6 +78,13 @@ import { writeVoiceMode } from './voiceMode';
 import { writeChannelsMode } from './channelsMode';
 import { writeGrowthBookAntParity } from './growthBookAntParity';
 import { writePlanModeInterview } from './planModeInterview';
+import { writeReactiveCompact } from './reactiveCompact';
+import { writeEngramMemoryBridge } from './engramMemoryBridge';
+import { writeEngramConditional } from './engramConditional';
+import {
+  writeAutoLaunchVerificationAgent,
+  writeVerificationAgentAvailability,
+} from './verificationAgent';
 import {
   restoreNativeBinaryFromBackup,
   restoreClijsFromBackup,
@@ -381,6 +389,39 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.FEATURES,
     description: 'Force the plan-mode interview phase on',
   },
+  {
+    id: 'reactive-compact',
+    name: 'Reactive compact',
+    group: PatchGroup.FEATURES,
+    description:
+      'Retry prompt-too-long failures by invoking the built-in compaction path',
+  },
+  {
+    id: 'engram-conditional',
+    name: 'Engram conditional detection',
+    group: PatchGroup.FEATURES,
+    description:
+      'Silently enable auto-extraction if Engram endpoint is reachable',
+  },
+  {
+    id: 'engram-memory-bridge',
+    name: 'Engram memory bridge',
+    group: PatchGroup.FEATURES,
+    description: 'Sync extracted memories to Engram',
+  },
+  {
+    id: 'verification-agent',
+    name: 'Verification agent',
+    group: PatchGroup.FEATURES,
+    description: 'Expose the built-in verification agent in external builds',
+  },
+  {
+    id: 'auto-launch-verification-agent',
+    name: 'Auto-launch verification agent',
+    group: PatchGroup.FEATURES,
+    description:
+      'Launch the verification agent automatically when 3+ tasks close out',
+  },
   // Features
   {
     id: 'allow-custom-agent-models',
@@ -395,6 +436,13 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.FEATURES,
     description:
       'Enable the EnterWorktree tool for isolated git worktree sessions',
+  },
+  {
+    id: 'time-based-microcompact',
+    name: 'Time-based microcompact',
+    group: PatchGroup.FEATURES,
+    description:
+      'Clear old tool results after 60min gap and add recording nudge',
   },
   {
     id: 'session-memory',
@@ -877,6 +925,26 @@ export const applyCustomization = async (
       fn: c => writePlanModeInterview(c),
       condition: !!config.settings.antParity?.forcePlanModeInterview,
     },
+    'reactive-compact': {
+      fn: c => writeReactiveCompact(c),
+      condition: !!config.settings.antParity?.enableReactiveCompact,
+    },
+    'verification-agent': {
+      fn: c => writeVerificationAgentAvailability(c),
+      condition: !!config.settings.antParity?.enableVerificationAgent,
+    },
+    'auto-launch-verification-agent': {
+      fn: c => writeAutoLaunchVerificationAgent(c),
+      condition: !!config.settings.antParity?.autoLaunchVerificationAgent,
+    },
+    'engram-memory-bridge': {
+      fn: c => writeEngramMemoryBridge(c),
+      condition: !!config.settings.antParity?.enableEngramMemoryBridge,
+    },
+    'engram-conditional': {
+      fn: c => writeEngramConditional(c),
+      condition: !!config.settings.antParity?.enableEngramMemoryBridge,
+    },
     // Features
     'allow-custom-agent-models': {
       fn: c => writeAllowCustomAgentModels(c),
@@ -888,6 +956,9 @@ export const applyCustomization = async (
         !!config.settings.misc?.enableWorktreeMode &&
         !!ccInstInfo.version &&
         compareVersions(ccInstInfo.version, '2.1.51') < 0,
+    },
+    'time-based-microcompact': {
+      fn: c => writeMicrocompactFallback(c),
     },
     'session-memory': {
       fn: c => writeSessionMemory(c),

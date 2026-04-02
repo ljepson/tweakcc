@@ -72,6 +72,7 @@ export function MiscView({ onSubmit }: MiscViewProps) {
     tableFormat: 'default' as TableFormat,
     enableSwarmMode: true,
     enableSessionMemory: true,
+    enableTimeBasedMicrocompact: false,
     enableRememberSkill: false,
     tokenCountRounding: null as number | null,
     autoAcceptPlanMode: false,
@@ -533,6 +534,20 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.enableSessionMemory =
               !settings.misc!.enableSessionMemory;
+          });
+        },
+      },
+      {
+        id: 'enableTimeBasedMicrocompact',
+        title: 'Enable time-based tool result clearing',
+        description:
+          'Automatically clear old tool results from context when there has been a long gap (60+ min) since the last response.',
+        getValue: () => settings.misc?.enableTimeBasedMicrocompact ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.enableTimeBasedMicrocompact =
+              !settings.misc!.enableTimeBasedMicrocompact;
           });
         },
       },

@@ -124,6 +124,7 @@ export interface MiscConfig {
   tableFormat: TableFormat;
   enableSwarmMode: boolean;
   enableSessionMemory: boolean;
+  enableTimeBasedMicrocompact: boolean;
   enableRememberSkill: boolean;
   tokenCountRounding: number | null;
   autoAcceptPlanMode: boolean;
@@ -166,6 +167,10 @@ export interface SubagentModelsConfig {
 export interface AntParityConfig {
   enableGrowthBookOverrides: boolean;
   forcePlanModeInterview: boolean;
+  enableReactiveCompact: boolean;
+  enableVerificationAgent: boolean;
+  autoLaunchVerificationAgent: boolean;
+  enableEngramMemoryBridge: boolean;
 }
 
 export interface Settings {

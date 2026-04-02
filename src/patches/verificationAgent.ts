@@ -86,7 +86,7 @@ export const writeAutoLaunchVerificationAgent = (
   let newFile = oldFile;
 
   const todoPattern =
-    /([$\w]+)=!1;return ([$\w]+)\.setAppState\(\(([$\w]+)\)=>\(\{\.\.\.\3,todos:\{\.\.\.\3\.todos,\[([$\w]+)\]:([$\w]+)\}\}\)\),\{data:\{oldTodos:([$\w]+),newTodos:([$\w]+),verificationNudgeNeeded:\1\}\}/;
+    /async call\(\{todos:([$\w]+)\},([$\w]+)\)\{let ([$\w]+)=\2\.getAppState\(\),([$\w]+)=\2\.agentId\?\?V\$\(\),([$\w]+)=\3\.todos\[\4\]\?\?\[],([$\w]+)=\1\.every\(\(([$\w]+)\)=>\7\.status==="completed"\)\?\[]:\1,([$\w]+)=!1;return \2\.setAppState\(\(([$\w]+)\)=>\(\{\.\.\.\9,todos:\{\.\.\.\9\.todos,\[\4\]:\6\}\}\)\),\{data:\{oldTodos:\5,newTodos:\1,verificationNudgeNeeded:\8\}\}/;
   const todoMatch = newFile.match(todoPattern);
 
   if (!todoMatch || todoMatch.index === undefined) {
@@ -96,15 +96,17 @@ export const writeAutoLaunchVerificationAgent = (
     return null;
   }
 
-  const nudgeVar = todoMatch[1];
+  const todosVar = todoMatch[1];
   const contextVar = todoMatch[2];
-  const prevStateVar = todoMatch[3];
-  const todoKeyVar = todoMatch[4];
-  const newTodosVar = todoMatch[5];
-  const oldTodosVar = todoMatch[6];
-  const todosVar = todoMatch[7];
+  const appStateVar = todoMatch[3];
+  const todoSessionVar = todoMatch[4];
+  const oldTodosVar = todoMatch[5];
+  const storedTodosVar = todoMatch[6];
+  const todoItemVar = todoMatch[7];
+  const nudgeVar = todoMatch[8];
+  const prevStateVar = todoMatch[9];
 
-  const todoReplacement = `${nudgeVar}=!1;if(!${contextVar}.agentId&&${todosVar}.every((O)=>O.status==="completed")&&${todosVar}.length>=3&&!${todosVar}.some((O)=>/verif/i.test(O.content))){let __tweakccVerifierTool=${contextVar}.options.tools.find((O)=>O.name==="Agent");if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==="function")try{await __tweakccVerifierTool.call({description:'Verify recent completed work',prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.",subagent_type:'verification',model:'haiku',run_in_background:!0},${contextVar},async(O,Y)=>({behavior:'allow',updatedInput:Y}))}catch{${nudgeVar}=!0}else ${nudgeVar}=!0}return ${contextVar}.setAppState((${prevStateVar})=>({...${prevStateVar},todos:{...${prevStateVar}.todos,[${todoKeyVar}]:${newTodosVar}}})),{data:{oldTodos:${oldTodosVar},newTodos:${todosVar},verificationNudgeNeeded:${nudgeVar}}}`;
+  const todoReplacement = `let ${appStateVar}=${contextVar}.getAppState(),${todoSessionVar}=${contextVar}.agentId??V$(),${oldTodosVar}=${appStateVar}.todos[${todoSessionVar}]??[],${storedTodosVar}=${todosVar}.every((${todoItemVar})=>${todoItemVar}.status==="completed")?[]:${todosVar},${nudgeVar}=!1;if(!${contextVar}.agentId&&${todosVar}.every((O)=>O.status==="completed")&&${todosVar}.length>=3&&!${todosVar}.some((O)=>/verif/i.test(O.content))){let __tweakccVerifierTool=${contextVar}.options.tools.find((O)=>O.name==="Agent");if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==="function")try{await __tweakccVerifierTool.call({description:'Verify recent completed work',prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.",subagent_type:'verification',model:'haiku',run_in_background:!0},${contextVar},async(O,Y)=>({behavior:'allow',updatedInput:Y}))}catch{${nudgeVar}=!0}else ${nudgeVar}=!0}return ${contextVar}.setAppState((${prevStateVar})=>({...${prevStateVar},todos:{...${prevStateVar}.todos,[${todoSessionVar}]:${storedTodosVar}}})),{data:{oldTodos:${oldTodosVar},newTodos:${todosVar},verificationNudgeNeeded:${nudgeVar}}}`;
 
   let startIndex = todoMatch.index;
   let endIndex = startIndex + todoMatch[0].length;
@@ -112,8 +114,22 @@ export const writeAutoLaunchVerificationAgent = (
     newFile.slice(0, startIndex) + todoReplacement + newFile.slice(endIndex);
   showDiff(oldFile, newFile, todoReplacement, startIndex, endIndex);
 
+  const taskHeadPattern =
+    /async call\(\{taskId:([$\w]+),subject:([$\w]+),description:([$\w]+),activeForm:([$\w]+),status:([$\w]+),owner:([$\w]+),addBlocks:([$\w]+),addBlockedBy:([$\w]+),metadata:([$\w]+)\},([$\w]+)\)\{let ([$\w]+)=Jv\(\);/;
+  const taskHeadMatch = newFile.match(taskHeadPattern);
+
+  if (!taskHeadMatch) {
+    console.error(
+      'patch: autoLaunchVerificationAgent: failed to find TaskUpdate head'
+    );
+    return null;
+  }
+
+  const taskContextVar = taskHeadMatch[10];
+  const taskStoreVar = taskHeadMatch[11];
+
   const taskPattern =
-    /let ([$\w]+)=([$\w]+)\(\);[\s\S]*?let ([$\w]+)=!1;return\{data:\{success:!0,taskId:([$\w]+),updatedFields:([$\w]+),statusChange:([$\w]+)\.status!==void 0\?\{from:([$\w]+)\.status,to:\6\.status\}:void 0,verificationNudgeNeeded:\3\}\}/;
+    /let ([$\w]+)=!1;return\{data:\{success:!0,taskId:([$\w]+),updatedFields:([$\w]+),statusChange:([$\w]+)\.status!==void 0\?\{from:([$\w]+)\.status,to:\4\.status\}:void 0,verificationNudgeNeeded:\1\}\}/;
   const taskMatch = newFile.match(taskPattern);
 
   if (!taskMatch || taskMatch.index === undefined) {
@@ -123,15 +139,13 @@ export const writeAutoLaunchVerificationAgent = (
     return null;
   }
 
-  const taskStoreVar = taskMatch[1];
-  const taskListFn = taskMatch[2];
-  const taskNudgeVar = taskMatch[3];
-  const taskIdVar = taskMatch[4];
-  const updatedFieldsVar = taskMatch[5];
-  const updatesVar = taskMatch[6];
-  const existingTaskVar = taskMatch[7];
+  const taskNudgeVar = taskMatch[1];
+  const taskIdVar = taskMatch[2];
+  const updatedFieldsVar = taskMatch[3];
+  const updatesVar = taskMatch[4];
+  const existingTaskVar = taskMatch[5];
 
-  const taskReplacement = `let ${taskNudgeVar}=!1;if(${updatesVar}.status==="completed"&&!Y.agentId){let __tweakccAllTasks=await ${taskListFn}(${taskStoreVar}),__tweakccAllDone=__tweakccAllTasks.every((O)=>O.status==="completed");if(__tweakccAllDone&&__tweakccAllTasks.length>=3&&!__tweakccAllTasks.some((O)=>/verif/i.test(O.subject))){let __tweakccVerifierTool=Y.options.tools.find((O)=>O.name==="Agent");if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==="function")try{await __tweakccVerifierTool.call({description:'Verify recently completed task list',prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.",subagent_type:'verification',model:'haiku',run_in_background:!0},Y,async(O,J)=>({behavior:'allow',updatedInput:J}))}catch{${taskNudgeVar}=!0}else ${taskNudgeVar}=!0}}return{data:{success:!0,taskId:${taskIdVar},updatedFields:${updatedFieldsVar},statusChange:${updatesVar}.status!==void 0?{from:${existingTaskVar}.status,to:${updatesVar}.status}:void 0,verificationNudgeNeeded:${taskNudgeVar}}}`;
+  const taskReplacement = `let ${taskNudgeVar}=!1;if(${updatesVar}.status==="completed"&&!${taskContextVar}.agentId){let __tweakccAllTasks=(await $2(${taskStoreVar})).filter((O)=>!O.metadata?._internal),__tweakccAllDone=__tweakccAllTasks.every((O)=>O.status==="completed");if(__tweakccAllDone&&__tweakccAllTasks.length>=3&&!__tweakccAllTasks.some((O)=>/verif/i.test(O.subject))){let __tweakccVerifierTool=${taskContextVar}.options.tools.find((O)=>O.name==="Agent");if(__tweakccVerifierTool&&typeof __tweakccVerifierTool.call==="function")try{await __tweakccVerifierTool.call({description:'Verify recently completed task list',prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence.",subagent_type:'verification',model:'haiku',run_in_background:!0},${taskContextVar},async(O,J)=>({behavior:'allow',updatedInput:J}))}catch{${taskNudgeVar}=!0}else ${taskNudgeVar}=!0}}return{data:{success:!0,taskId:${taskIdVar},updatedFields:${updatedFieldsVar},statusChange:${updatesVar}.status!==void 0?{from:${existingTaskVar}.status,to:${updatesVar}.status}:void 0,verificationNudgeNeeded:${taskNudgeVar}}}`;
 
   startIndex = taskMatch.index;
   endIndex = startIndex + taskMatch[0].length;

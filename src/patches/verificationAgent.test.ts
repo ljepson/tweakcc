@@ -13,7 +13,7 @@ const mockBuiltInAgents =
 const mockTaskVerification =
   'async call({todos:H},c){let q=c.getAppState(),K=c.agentId??V$(),_=q.todos[K]??[],A=H.every((t)=>t.status==="completed")?[]:H,z=!1;return c.setAppState((s)=>({...s,todos:{...s.todos,[K]:A}})),{data:{oldTodos:_,newTodos:H,verificationNudgeNeeded:z}}}' +
   'mapToolResultToToolResultBlockParam({verificationNudgeNeeded:H},$){return H}' +
-  'let w=Jv();let P=!1;return{data:{success:!0,taskId:H,updatedFields:D,statusChange:j.status!==void 0?{from:M.status,to:j.status}:void 0,verificationNudgeNeeded:P}}';
+  'async call({taskId:H,subject:$,description:q,activeForm:K,status:_,owner:f,addBlocks:A,addBlockedBy:z,metadata:O},Y){let w=Jv();let M=await Sm(w,H);let D=[],j={};if(Object.keys(j).length>0)await vU(w,H,j);let P=!1;return{data:{success:!0,taskId:H,updatedFields:D,statusChange:j.status!==void 0?{from:M.status,to:j.status}:void 0,verificationNudgeNeeded:P}}}';
 
 describe('verificationAgentAvailability', () => {
   it('should add the verification agent to the built-in agent list', () => {
@@ -53,7 +53,21 @@ describe('autoLaunchVerificationAgent', () => {
     expect(result).toContain(
       `prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence."`
     );
-    expect(result).toContain(`await Jv(w)`);
+    expect(result).toContain(`await $2(w)`);
+  });
+
+  it('should not destroy unrelated microcompact or session-memory shapes', () => {
+    const coupledBundle =
+      mockTaskVerification +
+      'var W7K=G(()=>{e8();Gg4={enabled:!1,gapThresholdMinutes:60,keepRecent:5}});' +
+      'let config={minimumMessageTokensToInit:1e4,minimumTokensBetweenUpdate:5000,toolCallsBetweenUpdates:3};';
+    const result = writeAutoLaunchVerificationAgent(coupledBundle);
+    expect(result).toContain(
+      'var W7K=G(()=>{e8();Gg4={enabled:!1,gapThresholdMinutes:60,keepRecent:5}});'
+    );
+    expect(result).toContain('minimumMessageTokensToInit:1e4');
+    expect(result).toContain('minimumTokensBetweenUpdate:5000');
+    expect(result).toContain('toolCallsBetweenUpdates:3');
   });
 
   it('should no-op when verification auto-launch is already present', () => {

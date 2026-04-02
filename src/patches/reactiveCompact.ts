@@ -3,6 +3,18 @@
 import { showDiff } from './index';
 
 export const writeReactiveCompact = (oldFile: string): string | null => {
+  if (
+    oldFile.includes('isReactiveCompactEnabled(){return LG()}') &&
+    oldFile.includes(
+      'isWithheldPromptTooLong(H){return H?.type==="assistant"&&H.isApiErrorMessage&&Ke8(H)}'
+    ) &&
+    oldFile.includes(
+      'async tryReactiveCompact({hasAttempted:H,querySource:$,aborted:q,messages:K,cacheSafeParams:_})'
+    )
+  ) {
+    return oldFile;
+  }
+
   const pattern =
     /function ([$\w]+)\(H\)\{for\(let \$=H\.length-1;\$>=0;\$--\)\{let q=H\[\$\];if\(q\.type==="user"&&!q\.isMeta&&!q\.toolUseResult&&!q\.isCompactSummary\)return \$}return 0\}var ([$\w]+)=null,([$\w]+)=null,([$\w]+)=3;/;
   const match = oldFile.match(pattern);

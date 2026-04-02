@@ -5,6 +5,13 @@ import { showDiff } from './index';
 export const writeVerificationAgentAvailability = (
   oldFile: string
 ): string | null => {
+  if (
+    oldFile.includes("agentType:'verification'") ||
+    oldFile.includes('agentType:"verification"')
+  ) {
+    return oldFile;
+  }
+
   const verifierPromptPattern =
     /var ([$\w]+);var [$\w]+=G\(\(\)=>\{dY\(\);wA\(\);\1=`You are the verification specialist\./;
   const verifierPromptMatch = oldFile.match(verifierPromptPattern);
@@ -18,9 +25,12 @@ export const writeVerificationAgentAvailability = (
 
   const verifierPromptVar = verifierPromptMatch[1];
 
-  // Binary: function hV$(){if(dH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&Q6())return[];let H=[dd,CKK];if(RnH())H.push(gd,EV$);H.push({...dd,agentType:"verification"...
+  // 2.1.89 binary shape:
+  // function hV$(){if(dH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&Q6())return[];
+  // let H=[dd,CKK];if(RnH())H.push(gd,EV$);
+  // if(process.env.CLAUDE_CODE_ENTRYPOINT!=="sdk-ts"&&...)H.push(RKK);return H}
   const builtInAgentsPattern =
-    /function ([$\w]+)\(\)\{if\(dH\(process\.env\.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS\)&&Q6\(\)\)return\[\];let ([$\w]+)=\[([$\w]+),([$\w]+)\];if\(([$\w]+)\(\)\)\2\.push\(([$\w]+),([$\w]+)\);(\2\.push\(\{\.\.\.\3,agentType:'verification')/g;
+    /function ([$\w]+)\(\)\{if\(dH\(process\.env\.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS\)&&Q6\(\)\)return\[\];let ([$\w]+)=\[([$\w]+),([$\w]+)\];if\(([$\w]+)\(\)\)\2\.push\(([$\w]+),([$\w]+)\);if\(process\.env\.CLAUDE_CODE_ENTRYPOINT!==["']sdk-ts["']&&process\.env\.CLAUDE_CODE_ENTRYPOINT!==["']sdk-py["']&&process\.env\.CLAUDE_CODE_ENTRYPOINT!==["']sdk-cli["']\)\2\.push\(([$\w]+)\);return \2\}/g;
   const builtInAgentsMatch = Array.from(
     oldFile.matchAll(builtInAgentsPattern)
   )[0];
@@ -39,32 +49,24 @@ export const writeVerificationAgentAvailability = (
   const explorePlanGateFn = builtInAgentsMatch[5];
   const exploreAgentVar = builtInAgentsMatch[6];
   const planAgentVar = builtInAgentsMatch[7];
+  const cliAgentVar = builtInAgentsMatch[8];
 
   // In 2.1.89, the verification agent is ALREADY partially in H.push,
   // but we want to ensure it is always there and has the right prompt.
   // We will rewrite the function to be clean.
-  const replacement = `function ${fnName}(){if(dH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&Q6())return[];let ${agentsVar}=[${generalAgentVar},${statuslineAgentVar}];if(${explorePlanGateFn}())${agentsVar}.push(${exploreAgentVar},${planAgentVar});${agentsVar}.push({...${generalAgentVar},agentType:'verification',whenToUse:'Use this agent to verify that implementation work is correct before reporting completion. Invoke after non-trivial tasks (3+ file edits, backend/API changes, infrastructure changes).',color:'red',background:!0,model:'inherit',disallowedTools:[OK,mE,MK,H_,ZL],getSystemPrompt:()=>${verifierPromptVar}});if(process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-ts'&&process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-py'&&process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-cli'){let RKK=Array.from(arguments)[0];if(RKK)${agentsVar}.push(RKK)}return ${agentsVar}}`;
+  const replacement = `function ${fnName}(){if(dH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&Q6())return[];let ${agentsVar}=[${generalAgentVar},${statuslineAgentVar}];if(${explorePlanGateFn}())${agentsVar}.push(${exploreAgentVar},${planAgentVar});${agentsVar}.push({...${generalAgentVar},agentType:'verification',whenToUse:'Use this agent to verify that implementation work is correct before reporting completion. Invoke after non-trivial tasks (3+ file edits, backend/API changes, infrastructure changes).',color:'red',background:!0,model:'inherit',disallowedTools:[OK,mE,MK,H_,ZL],getSystemPrompt:()=>${verifierPromptVar}});if(process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-ts'&&process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-py'&&process.env.CLAUDE_CODE_ENTRYPOINT!=='sdk-cli')${agentsVar}.push(${cliAgentVar});return ${agentsVar}}`;
 
   const startIndex = builtInAgentsMatch.index;
   const endIndex = startIndex + builtInAgentsMatch[0].length;
-  // We need to find the closing brace of the function.
-  let searchIndex = endIndex;
-  let braceCount = 1;
-  while (braceCount > 0 && searchIndex < oldFile.length) {
-    if (oldFile[searchIndex] === '{') braceCount++;
-    else if (oldFile[searchIndex] === '}') braceCount--;
-    searchIndex++;
-  }
-
   const newFile =
-    oldFile.slice(0, startIndex) + replacement + oldFile.slice(searchIndex);
+    oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);
 
   showDiff(
     oldFile,
     newFile,
     'Verification Agent Availability',
     startIndex,
-    searchIndex
+    endIndex
   );
   return newFile;
 };
@@ -72,10 +74,17 @@ export const writeVerificationAgentAvailability = (
 export const writeAutoLaunchVerificationAgent = (
   oldFile: string
 ): string | null => {
+  if (
+    oldFile.includes('subagent_type:"verification"') ||
+    oldFile.includes("subagent_type:'verification'")
+  ) {
+    return oldFile;
+  }
+
   let newFile = oldFile;
 
   const todoPattern =
-    /async call\(\{todos:([$\w]+)\},([$\w]+)\)\{let ([$\w]+)=\2\.getAppState\(\),([$\w]+)=\2\.agentId\?\?V\$\(\),([$\w]+)=\3\.todos\[\4\]\?\?\[],([$\w]+)=\1\.every\(\(\w+\)=>\w+\.status==='completed'\)\?\[]:\1,([$\w]+)=!1;return \2\.setAppState\(\(\w+\)=>\(\{\.\.\.\w+,todos:\{\.\.\.\w+\.todos,\[\4\]:\6\}\}\)\),\{data:\{oldTodos:\5,newTodos:\1,verificationNudgeNeeded:\7\}\}\}/;
+    /async call\(\{todos:([$\w]+)\},([$\w]+)\)\{let ([$\w]+)=\2\.getAppState\(\),([$\w]+)=\2\.agentId\?\?V\$\(\),([$\w]+)=\3\.todos\[\4\]\?\?\[],([$\w]+)=\1\.every\(\(\w+\)=>\w+\.status===["']completed["']\)\?\[]:\1,([$\w]+)=!1;return \2\.setAppState\(\(\w+\)=>\(\{.*?\}\)\),\{data:\{oldTodos:\5,newTodos:\1,verificationNudgeNeeded:\7\}\}\}/;
   const todoMatch = newFile.match(todoPattern);
 
   if (!todoMatch || todoMatch.index === undefined) {

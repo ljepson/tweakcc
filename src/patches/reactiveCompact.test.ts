@@ -24,6 +24,13 @@ describe('reactiveCompact', () => {
     );
   });
 
+  it('should no-op when reactive compact is already patched', () => {
+    const alreadyPatched =
+      'var rwH={isReactiveCompactEnabled(){return LG()},isWithheldPromptTooLong(H){return H?.type==="assistant"&&H.isApiErrorMessage&&Ke8(H)},isWithheldMediaSizeError(){return!1},async tryReactiveCompact({hasAttempted:H,querySource:$,aborted:q,messages:K,cacheSafeParams:_}){if(H||q||$==="compact"||$==="session_memory")return null;try{let f=await MyH(K,_.toolUseContext,_,!1,void 0,!1);I6H(void 0),jp($),Gt();return f}catch(f){if(bt(f,Bo)||bt(f,rhH)||bt(f,ihH))return null;YH(f);return null}}},$e8=null,MU9=3;';
+
+    expect(writeReactiveCompact(alreadyPatched)).toBe(alreadyPatched);
+  });
+
   it('returns null when the stub block is missing', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const result = writeReactiveCompact('var rwH={already:true};');

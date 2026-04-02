@@ -23,6 +23,15 @@ describe('growthBookAntParity', () => {
     expect(result).toContain('return bWH()??A$().growthBookOverrides??{}');
   });
 
+  it('should no-op when the GrowthBook parity patch is already present', () => {
+    const alreadyPatched =
+      'function qZH(){let H=globalThis.__tweakccGbEnvOverridesCache;if(H!==void 0)return H;let $=process.env.CLAUDE_INTERNAL_FC_OVERRIDES;if(!$)return globalThis.__tweakccGbEnvOverridesCache=null,null;try{return globalThis.__tweakccGbEnvOverridesCache=JSON.parse($)}catch{return globalThis.__tweakccGbEnvOverridesCache=null,null}}' +
+      'function pW4(){if(SR.size>0)return Object.fromEntries(SR);return z$().cachedGrowthBookFeatures??{}}' +
+      'function BW4(){return qZH()??z$().growthBookOverrides??{}}';
+
+    expect(writeGrowthBookAntParity(alreadyPatched)).toBe(alreadyPatched);
+  });
+
   it('should return null when the env override stub is missing', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const result = writeGrowthBookAntParity(

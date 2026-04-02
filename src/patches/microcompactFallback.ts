@@ -3,6 +3,18 @@
 import { showDiff } from './index';
 
 export const writeMicrocompactFallback = (oldFile: string): string | null => {
+  if (
+    oldFile.includes(
+      'globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false'
+    ) &&
+    oldFile.includes('[TIME-BASED MC]') &&
+    oldFile.includes(
+      "{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}"
+    )
+  ) {
+    return oldFile;
+  }
+
   // Step 1: Patch W7K to use our setting instead of just the GB feature gate
   // Binary: var W7K=G(()=>{e8();Gg4={enabled:!1,gapThresholdMinutes:60,keepRecent:5}});
   const w7kPattern =
@@ -44,7 +56,7 @@ export const writeMicrocompactFallback = (oldFile: string): string | null => {
   let newFile = oldFile;
 
   // Replace W7K
-  const w7kReplacement = `var ${w7kVar}=G(()=>{e8();${g4Var}={enabled:globalThis.__tweakccConfig.settings.misc?.enableTimeBasedMicrocompact??false,gapThresholdMinutes:60,keepRecent:5}});`;
+  const w7kReplacement = `var ${w7kVar}=G(()=>{e8();${g4Var}={enabled:globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false,gapThresholdMinutes:60,keepRecent:5}});`;
   newFile = newFile.replace(w7kMatch[0], w7kReplacement);
 
   // Replace Ng4 return

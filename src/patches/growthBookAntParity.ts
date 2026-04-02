@@ -3,6 +3,14 @@
 import { showDiff } from './index';
 
 export const writeGrowthBookAntParity = (oldFile: string): string | null => {
+  if (
+    oldFile.includes('globalThis.__tweakccGbEnvOverridesCache') &&
+    oldFile.includes('process.env.CLAUDE_INTERNAL_FC_OVERRIDES') &&
+    oldFile.includes('growthBookOverrides??{}')
+  ) {
+    return oldFile;
+  }
+
   const pattern =
     /function ([$\w]+)\(\)\{return\}function ([$\w]+)\(\)\{if\(([$\w]+)\.size>0\)return Object\.fromEntries\(\3\);return ([$\w]+)\(\)\.cachedGrowthBookFeatures\?\?\{\}\}function ([$\w]+)\(\)\{return \1\(\)\?\?\{\}\}function ([$\w]+)\(H,\$\)\{return\}function ([$\w]+)\(\)\{return\}/;
   const match = oldFile.match(pattern);

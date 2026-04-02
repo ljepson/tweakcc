@@ -3,6 +3,14 @@
 import { showDiff } from './index';
 
 export const writePlanModeInterview = (oldFile: string): string | null => {
+  if (
+    /function ([$\w]+)\(\)\{return!0\}function ([$\w]+)\(\)\{let H=[$\w]+\("tengu_pewter_ledger",null\);/.test(
+      oldFile
+    )
+  ) {
+    return oldFile;
+  }
+
   const pattern =
     /function ([$\w]+)\(\)\{let ([$\w]+)=process\.env\.CLAUDE_CODE_PLAN_MODE_INTERVIEW_PHASE;if\([$\w]+\(\2\)\)return!0;if\([$\w]+\(\2\)\)return!1;return [$\w]+\("tengu_plan_mode_interview_phase",!1\)\}/;
   const match = oldFile.match(pattern);

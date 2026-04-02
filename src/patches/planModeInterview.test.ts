@@ -16,6 +16,13 @@ describe('planModeInterview', () => {
     expect(result).not.toContain('tengu_plan_mode_interview_phase');
   });
 
+  it('should no-op when the interview phase is already forced on', () => {
+    const alreadyPatched =
+      'function Aw(){return!0}function gd$(){let H=u("tengu_pewter_ledger",null);if(H==="trim"||H==="cut"||H==="cap")return H;return null}';
+
+    expect(writePlanModeInterview(alreadyPatched)).toBe(alreadyPatched);
+  });
+
   it('should return null when the interview gate function is not found', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const result = writePlanModeInterview('function other(){return!1}');

@@ -213,6 +213,14 @@ function getStringPointerContent(
   );
 }
 
+function trimTrailingNulls(buffer: Buffer): Buffer {
+  let end = buffer.length;
+  while (end > 0 && buffer[end - 1] === 0) {
+    end -= 1;
+  }
+  return buffer.subarray(0, end);
+}
+
 function parseStringPointer(buffer: Buffer, offset: number): StringPointer {
   return {
     offset: buffer.readUInt32LE(offset),
@@ -230,7 +238,12 @@ function isClaudeModule(moduleName: string): boolean {
     moduleName.endsWith('/claude.exe') ||
     moduleName === 'claude.exe' ||
     moduleName.endsWith('/src/entrypoints/cli.js') ||
-    moduleName === 'src/entrypoints/cli.js'
+    moduleName === 'src/entrypoints/cli.js' ||
+    // Some Bun-packed native builds expose a corrupted module name string
+    // that still contains the entrypoint path but also includes surrounding
+    // payload bytes. Accept a substring match so extraction can still find
+    // the CLI module instead of falling back to stale cached JS.
+    moduleName.includes('src/entrypoints/cli.js')
   );
 }
 
@@ -270,7 +283,8 @@ function mapModules<T>(
   visitor: (
     module: BunModule,
     moduleName: string,
-    index: number
+    index: number,
+    moduleNameBytes: Buffer
   ) => T | undefined
 ): T | undefined {
   const modulesListBytes = getStringPointerContent(
@@ -288,11 +302,10 @@ function mapModules<T>(
       offset,
       moduleStructSize
     );
-    const moduleName = getStringPointerContent(bunData, module.name).toString(
-      'utf-8'
-    );
+    const moduleNameBytes = getStringPointerContent(bunData, module.name);
+    const moduleName = moduleNameBytes.toString('utf-8');
 
-    const result = visitor(module, moduleName, i);
+    const result = visitor(module, moduleName, i, moduleNameBytes);
     if (result !== undefined) {
       return result;
     }
@@ -721,17 +734,20 @@ function getBunData(
     case 'PE':
       return extractBunDataFromPE(binary as LIEF.PE.Binary);
     case 'ELF': {
-      // Try new .bun ELF section format first (Bun >= 1.3.x, post-PR#26923)
+      // Prefer a validated LOAD-segment payload when available. Some native
+      // Claude ELF builds expose a .bun section but have corrupted section
+      // metadata; routing repacks through the raw segment rewrite avoids
+      // node-lief's ELF writer entirely.
       const elfBinary = binary as LIEF.ELF.Binary;
-      const sectionResult = extractBunDataFromELFSection(elfBinary);
-      if (sectionResult) {
-        debug('getBunData: Using new ELF .bun section format');
-        return sectionResult;
-      }
       const loadSegmentResult = extractBunDataFromELFLoadSegment(elfBinary);
       if (loadSegmentResult) {
-        debug('getBunData: Using ELF LOAD-segment fallback format');
+        debug('getBunData: Using ELF LOAD-segment format');
         return loadSegmentResult;
+      }
+      const sectionResult = extractBunDataFromELFSection(elfBinary);
+      if (sectionResult) {
+        debug('getBunData: Using ELF .bun section format');
+        return sectionResult;
       }
       // Fall back to legacy overlay format
       debug('getBunData: Falling back to legacy ELF overlay format');
@@ -771,7 +787,7 @@ export function extractClaudeJsFromNativeInstallation(
       bunData,
       bunOffsets,
       moduleStructSize,
-      (module, moduleName, index) => {
+      (module, moduleName, index, moduleNameBytes) => {
         debug(
           `extractClaudeJsFromNativeInstallation: Module ${index}: ${moduleName}`
         );
@@ -790,7 +806,27 @@ export function extractClaudeJsFromNativeInstallation(
           `extractClaudeJsFromNativeInstallation: Found claude module, contents length=${moduleContents.length}`
         );
 
-        return moduleContents.length > 0 ? moduleContents : undefined;
+        if (moduleContents.length > 0) {
+          return moduleContents;
+        }
+
+        const separatorIndex = moduleNameBytes.indexOf(0);
+        if (
+          separatorIndex >= 0 &&
+          separatorIndex + 1 < moduleNameBytes.length
+        ) {
+          const embeddedContents = trimTrailingNulls(
+            moduleNameBytes.subarray(separatorIndex + 1)
+          );
+          if (embeddedContents.length > 0) {
+            debug(
+              `extractClaudeJsFromNativeInstallation: Recovered embedded claude module payload from malformed module name, length=${embeddedContents.length}`
+            );
+            return embeddedContents;
+          }
+        }
+
+        return undefined;
       }
     );
 
@@ -1503,7 +1539,7 @@ function repackELFLoadSegment(
 
     atomicWriteFileBuffer(outputBinary, outputPath, binPath);
   } catch (error) {
-    console.error('repackELFLoadSegment failed:', error);
+    debug('repackELFLoadSegment failed:', error);
     throw error;
   }
 }
@@ -1530,7 +1566,7 @@ export function repackNativeInstallation(
   const binary = LIEF.parse(binPath);
 
   // Extract Bun data and rebuild with modified claude.js
-  const {
+  let {
     bunOffsets,
     bunData,
     sectionHeaderSize,
@@ -1570,34 +1606,56 @@ export function repackNativeInstallation(
         sectionHeaderSize
       );
       break;
-    case 'ELF':
+    case 'ELF': {
+      const elfBinary = binary as LIEF.ELF.Binary;
+      let repacked = false;
+
       if (elfLoadSegmentOffset != null && elfLoadSegmentSize != null) {
-        repackELFLoadSegment(
-          binPath,
-          newBuffer,
-          outputPath,
-          elfLoadSegmentOffset,
-          elfLoadSegmentSize
-        );
-      } else if (sectionHeaderSize) {
+        try {
+          repackELFLoadSegment(
+            binPath,
+            newBuffer,
+            outputPath,
+            elfLoadSegmentOffset,
+            elfLoadSegmentSize
+          );
+          repacked = true;
+        } catch (loadSegErr) {
+          // LOAD segment too small for patched payload — fall through to
+          // section-based repack which can resize via LIEF's ELF builder.
+          debug(
+            `repackNativeInstallation: LOAD segment repack failed (${loadSegErr instanceof Error ? loadSegErr.message : loadSegErr}), trying section-based fallback`
+          );
+        }
+      }
+
+      if (!repacked && !sectionHeaderSize) {
+        // LOAD segment path wasn't used or failed — probe for .bun section
+        // metadata so the section-based repack can be attempted.
+        const sectionProbe = extractBunDataFromELFSection(elfBinary);
+        if (sectionProbe?.sectionHeaderSize) {
+          sectionHeaderSize = sectionProbe.sectionHeaderSize;
+        }
+      }
+
+      if (!repacked && sectionHeaderSize) {
         // New .bun section format (post-PR#26923)
         repackELFSection(
-          binary as LIEF.ELF.Binary,
+          elfBinary,
           binPath,
           newBuffer,
           outputPath,
           sectionHeaderSize
         );
-      } else {
+        repacked = true;
+      }
+
+      if (!repacked) {
         // Legacy overlay format
-        repackELFOverlay(
-          binary as LIEF.ELF.Binary,
-          binPath,
-          newBuffer,
-          outputPath
-        );
+        repackELFOverlay(elfBinary, binPath, newBuffer, outputPath);
       }
       break;
+    }
     default: {
       const _exhaustive: never = binary;
       throw new Error(

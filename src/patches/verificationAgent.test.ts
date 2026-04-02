@@ -13,7 +13,7 @@ const mockBuiltInAgents =
 const mockTaskVerification =
   'async call({todos:H},c){let q=c.getAppState(),K=c.agentId??V$(),_=q.todos[K]??[],A=H.every((t)=>t.status==="completed")?[]:H,z=!1;return c.setAppState((s)=>({...s,todos:{...s.todos,[K]:A}})),{data:{oldTodos:_,newTodos:H,verificationNudgeNeeded:z}}}' +
   'mapToolResultToToolResultBlockParam({verificationNudgeNeeded:H},$){return H}' +
-  'let P=!1;return{data:{success:!0,taskId:H,updatedFields:D,statusChange:j.status!==void 0?{from:M.status,to:j.status}:void 0,verificationNudgeNeeded:P}}';
+  'let w=Jv();let P=!1;return{data:{success:!0,taskId:H,updatedFields:D,statusChange:j.status!==void 0?{from:M.status,to:j.status}:void 0,verificationNudgeNeeded:P}}';
 
 describe('verificationAgentAvailability', () => {
   it('should add the verification agent to the built-in agent list', () => {
@@ -53,7 +53,7 @@ describe('autoLaunchVerificationAgent', () => {
     expect(result).toContain(
       `prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence."`
     );
-    expect(result).toContain(`await $2(w)`);
+    expect(result).toContain(`await Jv(w)`);
   });
 
   it('should no-op when verification auto-launch is already present', () => {

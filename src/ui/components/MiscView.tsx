@@ -716,6 +716,29 @@ export function MiscView({ onSubmit }: MiscViewProps) {
           });
         },
       },
+      {
+        id: 'enableKairos',
+        title: 'Enable KAIROS Tick Loop',
+        description:
+          'Autonomous background loop with focus-based pacing and cost tracking.',
+        getValue: () => settings.antParity?.enableKairos ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            if (!settings.antParity) {
+              settings.antParity = {
+                enableGrowthBookOverrides: true,
+                forcePlanModeInterview: true,
+                enableReactiveCompact: true,
+                enableVerificationAgent: true,
+                autoLaunchVerificationAgent: true,
+                enableEngramMemoryBridge: true,
+                enableKairos: false,
+              };
+            }
+            settings.antParity.enableKairos = !settings.antParity.enableKairos;
+          });
+        },
+      },
     ],
     [settings, updateSettings]
   );

@@ -76,6 +76,7 @@ import { writeWorktreeMode } from './worktreeMode';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
 import { writeVoiceMode } from './voiceMode';
 import { writeChannelsMode } from './channelsMode';
+import { writeKairos } from './kairos';
 import { writeGrowthBookAntParity } from './growthBookAntParity';
 import { writePlanModeInterview } from './planModeInterview';
 import { writeReactiveCompact } from './reactiveCompact';
@@ -430,6 +431,13 @@ const PATCH_DEFINITIONS = [
       'Launch the verification agent automatically when 3+ tasks close out',
   },
   // Features
+  {
+    id: 'kairos',
+    name: 'KAIROS tick loop',
+    group: PatchGroup.FEATURES,
+    description:
+      'Autonomous background loop with focus-based pacing and cost tracking',
+  },
   {
     id: 'allow-custom-agent-models',
     name: 'Allow custom agent models',
@@ -1030,6 +1038,10 @@ export const applyCustomization = async (
           config.settings.misc?.enableVoiceConciseOutput ?? true
         ),
       condition: !!config.settings.misc?.enableVoiceMode,
+    },
+    kairos: {
+      fn: c => writeKairos(c),
+      condition: !!config.settings.antParity?.enableKairos,
     },
     'channels-mode': {
       fn: c => writeChannelsMode(c),

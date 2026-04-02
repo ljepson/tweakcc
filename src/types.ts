@@ -172,6 +172,7 @@ export interface AntParityConfig {
   enableVerificationAgent: boolean;
   autoLaunchVerificationAgent: boolean;
   enableEngramMemoryBridge: boolean;
+  enableKairos: boolean;
 }
 
 export interface Settings {

@@ -739,6 +739,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enableVerificationAgent: true,
     autoLaunchVerificationAgent: true,
     enableEngramMemoryBridge: true,
+    enableKairos: false,
   },
   inputPatternHighlighters: [],
   inputPatternHighlightersTestText: 'Type test text here to see highlighting',

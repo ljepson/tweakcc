@@ -734,6 +734,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   antParity: {
     enableGrowthBookOverrides: true,
+    enableContextDiagnostics: true,
     forcePlanModeInterview: true,
     enableReactiveCompact: true,
     enableVerificationAgent: true,

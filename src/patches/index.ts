@@ -78,6 +78,7 @@ import { writeVoiceMode } from './voiceMode';
 import { writeChannelsMode } from './channelsMode';
 import { writeKairos } from './kairos';
 import { writeGrowthBookAntParity } from './growthBookAntParity';
+import { writeContextDiagnostics } from './contextDiagnostics';
 import { writePlanModeInterview } from './planModeInterview';
 import { writeReactiveCompact } from './reactiveCompact';
 import { writeContextCollapse } from './contextCollapse';
@@ -384,6 +385,14 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.FEATURES,
     description:
       'Restore env and ~/.claude.json GrowthBook overrides in external builds',
+  },
+  {
+    id: 'context-diagnostics',
+    name: 'Context diagnostics',
+    group: PatchGroup.FEATURES,
+    description:
+      'Expose detailed /context breakdown sections in external builds',
+    supportedVersions: ['2.1.89'],
   },
   {
     id: 'plan-mode-interview',
@@ -969,6 +978,10 @@ export const applyCustomization = async (
     'growthbook-ant-parity': {
       fn: c => writeGrowthBookAntParity(c),
       condition: !!config.settings.antParity?.enableGrowthBookOverrides,
+    },
+    'context-diagnostics': {
+      fn: c => writeContextDiagnostics(c),
+      condition: !!config.settings.antParity?.enableContextDiagnostics,
     },
     'plan-mode-interview': {
       fn: c => writePlanModeInterview(c),

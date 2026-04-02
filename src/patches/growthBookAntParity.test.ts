@@ -21,6 +21,8 @@ describe('growthBookAntParity', () => {
     expect(result).toContain('process.env.CLAUDE_INTERNAL_FC_OVERRIDES');
     expect(result).toContain('globalThis.__tweakccGbEnvOverridesCache');
     expect(result).toContain('return bWH()??A$().growthBookOverrides??{}');
+    expect(result).toContain('S$((_)=>({..._,growthBookOverrides');
+    expect(result).toContain('HZH.emit()');
   });
 
   it('should no-op when the GrowthBook parity patch is already present', () => {

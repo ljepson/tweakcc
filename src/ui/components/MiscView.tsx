@@ -727,6 +727,7 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             if (!settings.antParity) {
               settings.antParity = {
                 enableGrowthBookOverrides: true,
+                enableContextDiagnostics: true,
                 forcePlanModeInterview: true,
                 enableReactiveCompact: true,
                 enableVerificationAgent: true,

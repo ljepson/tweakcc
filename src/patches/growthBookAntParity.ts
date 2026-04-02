@@ -35,8 +35,8 @@ export const writeGrowthBookAntParity = (oldFile: string): string | null => {
     `function ${envFnName}(){let H=globalThis.__tweakccGbEnvOverridesCache;if(H!==void 0)return H;let $=process.env.CLAUDE_INTERNAL_FC_OVERRIDES;if(!$)return globalThis.__tweakccGbEnvOverridesCache=null,null;try{return globalThis.__tweakccGbEnvOverridesCache=JSON.parse($)}catch{return globalThis.__tweakccGbEnvOverridesCache=null,null}}` +
     `function ${cachedFeaturesFnName}(){if(${stateMapName}.size>0)return Object.fromEntries(${stateMapName});return ${configGetterFnName}().cachedGrowthBookFeatures??{}}` +
     `function ${configOverridesFnName}(){return ${envFnName}()??${configGetterFnName}().growthBookOverrides??{}}` +
-    `function ${setOverrideFnName}(H,$){return}` +
-    `function ${clearOverridesFnName}(){return}`;
+    `function ${setOverrideFnName}(H,$){let q=${configGetterFnName}();if($===void 0){let K=q.growthBookOverrides??{};if(!(H in K))return;let {[H]:_,...f}=K;S$((A)=>{let z={...A};if(Object.keys(f).length>0)z.growthBookOverrides=f;else delete z.growthBookOverrides;return z}),HZH.emit();return}let K=q.growthBookOverrides??{};if(K[H]===$)return;S$((_)=>({..._,growthBookOverrides:{...(_.growthBookOverrides??{}),[H]:$}})),HZH.emit()}` +
+    `function ${clearOverridesFnName}(){let H=${configGetterFnName}();if(!H.growthBookOverrides||Object.keys(H.growthBookOverrides).length===0)return;S$(($)=>{let q={...$};delete q.growthBookOverrides;return q}),HZH.emit()}`;
 
   const newFile =
     oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);

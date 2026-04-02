@@ -167,6 +167,7 @@ export interface SubagentModelsConfig {
 
 export interface AntParityConfig {
   enableGrowthBookOverrides: boolean;
+  enableContextDiagnostics: boolean;
   forcePlanModeInterview: boolean;
   enableReactiveCompact: boolean;
   enableVerificationAgent: boolean;

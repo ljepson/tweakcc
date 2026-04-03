@@ -285,6 +285,10 @@ describe('migrateConfigIfNeeded', () => {
       // After first migration, return the migrated config
       return JSON.stringify(migratedConfig);
     });
+    vi.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+    vi.spyOn(fs, 'stat').mockResolvedValue(
+      {} as Awaited<ReturnType<typeof fs.stat>>
+    );
     vi.spyOn(fs, 'writeFile').mockResolvedValue(undefined);
 
     const result1 = await migrateConfigIfNeeded();

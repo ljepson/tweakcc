@@ -25,7 +25,7 @@ if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
 fi
 
 S=$(new_session "verif")
-start_claude "$S"
+start_claude "$S" -- --model "$TWEAKCC_TEST_MODEL"
 
 if ! wait_for_claude_ready "$S" 15; then
   fail "claude startup" "timed out — is tweakcc installed?"

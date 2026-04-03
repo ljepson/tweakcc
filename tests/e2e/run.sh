@@ -38,9 +38,9 @@ for test_file in "$TESTS_DIR"/[0-9]*.sh; do
 
   echo -e "\033[1mRunning: ${name}\033[0m"
   if bash "$test_file"; then
-    (( overall_pass++ ))
+    overall_pass=$(( overall_pass + 1 ))
   else
-    (( overall_fail++ ))
+    overall_fail=$(( overall_fail + 1 ))
     failed_files+=("$name")
   fi
 done

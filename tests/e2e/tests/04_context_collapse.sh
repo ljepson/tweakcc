@@ -24,7 +24,7 @@ fi
 TEST_LIMIT=4000
 
 S=$(new_session "collapse")
-start_claude "$S" "TWEAKCC_CONTEXT_COLLAPSE_TEST_LIMIT=${TEST_LIMIT}"
+start_claude "$S" "TWEAKCC_CONTEXT_COLLAPSE_TEST_LIMIT=${TEST_LIMIT}" -- --model "$TWEAKCC_TEST_MODEL"
 
 if ! wait_for_claude_ready "$S" 15; then
   fail "claude startup" "timed out — is tweakcc installed?"

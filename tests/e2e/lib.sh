@@ -93,15 +93,15 @@ wait_gone() {
 
 # ============================================================
 
-pass() { echo -e "${_G}PASS${_N}  $1"; (( PASS_COUNT++ )); }
+pass() { echo -e "${_G}PASS${_N}  $1"; PASS_COUNT=$(( PASS_COUNT + 1 )); }
 
 fail() {
   echo -e "${_R}FAIL${_N}  $1${2:+  → $2}"
-  (( FAIL_COUNT++ ))
+  FAIL_COUNT=$(( FAIL_COUNT + 1 ))
   return 0
 }
 
-skip() { echo -e "${_Y}SKIP${_N}  $1${2:+  (${2})}"; (( SKIP_COUNT++ )); }
+skip() { echo -e "${_Y}SKIP${_N}  $1${2:+  (${2})}"; SKIP_COUNT=$(( SKIP_COUNT + 1 )); }
 
 assert_present() {
   local session="$1" pattern="$2" msg="$3"
@@ -135,6 +135,58 @@ assert_present_history() {
     capture_history "$session" 50 | tail -30 >&2
     echo "  ---" >&2
   fi
+}
+
+# Return 0 if a tweakcc misc config key is truthy, 1 otherwise.
+# Usage: tweakcc_enabled misc.conversationTitle
+tweakcc_enabled() {
+  local key="$1"
+  python3 -c "
+import json, sys
+try:
+    with open('$HOME/.tweakcc/config.json') as f:
+        c = json.load(f)
+    parts = '$key'.split('.')
+    v = c.get('settings', {})
+    for p in parts:
+        v = v.get(p) if isinstance(v, dict) else None
+    sys.exit(0 if v else 1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null
+}
+
+# Model used for API test sessions. Haiku is cheap and sufficient for patch validation.
+# Override with TWEAKCC_TEST_MODEL env var to use a different model.
+TWEAKCC_TEST_MODEL="${TWEAKCC_TEST_MODEL:-claude-haiku-4-5-20251001}"
+
+# Return 0 if the running CC version satisfies a semver constraint.
+# Usage: cc_version_lt "2.0.64"   # true if current CC < 2.0.64
+#        cc_version_gte "2.1.89"  # true if current CC >= 2.1.89
+_CC_VERSION=""
+_cc_version() {
+  if [[ -z "$_CC_VERSION" ]]; then
+    _CC_VERSION=$(claude --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  fi
+  echo "$_CC_VERSION"
+}
+
+cc_version_lt() {
+  python3 -c "
+import sys
+def v(s): return tuple(int(x) for x in s.split('.'))
+cur = '$(_cc_version)'; tgt = '$1'
+sys.exit(0 if cur and v(cur) < v(tgt) else 1)
+" 2>/dev/null
+}
+
+cc_version_gte() {
+  python3 -c "
+import sys
+def v(s): return tuple(int(x) for x in s.split('.'))
+cur = '$(_cc_version)'; tgt = '$1'
+sys.exit(0 if cur and v(cur) >= v(tgt) else 1)
+" 2>/dev/null
 }
 
 section() {

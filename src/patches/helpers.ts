@@ -313,6 +313,31 @@ export const findTextComponent = (fileContents: string): string | undefined => {
 /**
  * Find the Box component variable name
  */
+/**
+ * Inject code after the Bun CommonJS wrapper header instead of prepending before it.
+ * The Bun header looks like: // @bun @bytecode @bun-cjs\n(function(exports, require, module, __filename, __dirname) {
+ * Returns the modified file, or null if injection failed.
+ */
+export const injectAfterBunHeader = (
+  fileContents: string,
+  codeToInject: string
+): string | null => {
+  const BUN_CJS_MARKER =
+    '(function(exports, require, module, __filename, __dirname) {';
+  const markerIdx = fileContents.indexOf(BUN_CJS_MARKER);
+  if (markerIdx !== -1) {
+    const insertPoint = markerIdx + BUN_CJS_MARKER.length;
+    return (
+      fileContents.slice(0, insertPoint) +
+      '\n' +
+      codeToInject +
+      fileContents.slice(insertPoint)
+    );
+  }
+  // Non-Bun bundle: prepend
+  return codeToInject + '\n' + fileContents;
+};
+
 export const findBoxComponent = (fileContents: string): string | undefined => {
   // Method 1: Find Box by ink-box createElement with local variable (CC ~2.0.x)
   const inkBoxPattern =

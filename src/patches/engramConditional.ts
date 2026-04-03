@@ -46,8 +46,21 @@ export const writeEngramConditional = (oldFile: string): string | null => {
   // This prevents race conditions where feature gates check before the async probe completes.
   const probeCode = `globalThis.__engramAvailable=false;(async()=>{try{let h=await fetch("https://engram.blissawry.com/mcp/",{method:"OPTIONS"});if(h.ok)globalThis.__engramAvailable=true}catch{}})();`;
 
-  // We will just prepend it to the whole file
-  newFile = probeCode + '\n' + newFile;
+  // Inject after Bun CJS wrapper, not before header
+  const BUN_CJS_MARKER =
+    '(function(exports, require, module, __filename, __dirname) {';
+  const markerIdx = newFile.indexOf(BUN_CJS_MARKER);
+  if (markerIdx !== -1) {
+    const insertPoint = markerIdx + BUN_CJS_MARKER.length;
+    newFile =
+      newFile.slice(0, insertPoint) +
+      '\n' +
+      probeCode +
+      newFile.slice(insertPoint);
+  } else {
+    // Non-Bun bundle: prepend
+    newFile = probeCode + '\n' + newFile;
+  }
 
   showDiff(
     oldFile,

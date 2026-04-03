@@ -1424,35 +1424,16 @@ export const displaySyncResults = (summary: SyncSummary): void => {
     console.log();
   }
 
-  // Display created files
   if (created.length > 0) {
     console.log(
-      chalk.bold.green(`Created ${created.length} new prompt file(s):`)
+      chalk.bold.green(`Created ${created.length} new prompt file(s)`)
     );
-    for (const result of created) {
-      console.log(chalk.green(`  ${SYSTEM_PROMPTS_DIR}/${result.id}.md`));
-      console.log(chalk.green.dim(`    ${result.description}`));
-    }
-    console.log();
   }
 
-  // Display updated files
   if (updated.length > 0) {
     console.log(
-      chalk.bold.blue(`Updated ${updated.length} system prompt file(s):`)
+      chalk.bold.blue(`Updated ${updated.length} system prompt file(s)`)
     );
-    for (const result of updated) {
-      if (result.oldVersion) {
-        console.log(
-          chalk.blue(
-            `  ${result.id}.md  (${result.oldVersion} → ${result.newVersion})`
-          )
-        );
-      } else {
-        console.log(chalk.blue(`  ${result.id}.md  (→ ${result.newVersion})`));
-      }
-    }
-    console.log();
   }
 
   // Display conflicts with warnings
@@ -1478,41 +1459,23 @@ export const displaySyncResults = (summary: SyncSummary): void => {
   // Actionable next steps
   if (created.length > 0) {
     console.log(
-      chalk.green.bold(
-        `New prompt files have been created; either more are now supported by tweakcc or Anthropic has added new ones.`
-      )
-    );
-    console.log(
       chalk.green(
-        `You can now customize the markdown files at ${SYSTEM_PROMPTS_DIR} in a text editor.`
+        `Customize new prompts at ${SYSTEM_PROMPTS_DIR}, then re-apply.`
       )
     );
-    console.log(
-      chalk.green(
-        `Then run tweakcc and select "apply" or use tweakcc --apply to update your system prompts`
-      )
-    );
-    console.log();
   }
 
   if (conflicts.length > 0) {
-    console.log();
-    console.log(`Review conflicts:`);
-    console.log(`  1. Open the diff HTML files in your browser`);
-    console.log(`  2. Verify your customizations are still appropriate`);
-    console.log(`  3. Update your markdown files if needed`);
     console.log(
-      chalk.bold.cyan(
-        `  4. Important: Update the ccVersion in your markdown files to the latest version of each prompt:`
+      chalk.bold.yellow(
+        `Review ${conflicts.length} conflict(s) — update ccVersion in your markdown files:`
       )
     );
     for (const result of conflicts) {
       console.log(
-        chalk.yellow(`      ${result.id}.md → `) +
+        chalk.yellow(`  ${result.id}.md → `) +
           chalk.bold.magenta(result.newVersion)
       );
     }
-    console.log(`  5. Delete the diff HTML files`);
-    console.log();
   }
 };

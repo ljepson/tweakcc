@@ -129,12 +129,23 @@ export const writeContextCollapse = (oldFile: string): string | null => {
     return oldFile;
   }
 
-  // Inject helper functions at the start of the bundle
-  let newFile =
-    PROJECT_VIEW_HELPER +
-    APPLY_COLLAPSES_HELPER +
-    DRAIN_OVERFLOW_HELPER +
-    oldFile;
+  // Inject helper functions after the Bun CJS wrapper
+  const helpers =
+    PROJECT_VIEW_HELPER + APPLY_COLLAPSES_HELPER + DRAIN_OVERFLOW_HELPER;
+  const BUN_CJS_MARKER =
+    '(function(exports, require, module, __filename, __dirname) {';
+  const markerIdx = oldFile.indexOf(BUN_CJS_MARKER);
+  let newFile: string;
+  if (markerIdx !== -1) {
+    const insertPoint = markerIdx + BUN_CJS_MARKER.length;
+    newFile =
+      oldFile.slice(0, insertPoint) +
+      '\n' +
+      helpers +
+      oldFile.slice(insertPoint);
+  } else {
+    newFile = helpers + '\n' + oldFile;
+  }
 
   // =========================================================================
   // Patch 1: Extend DU9 local retry state with context collapse fields

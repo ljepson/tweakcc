@@ -1109,6 +1109,14 @@ export const applyCustomization = async (
   content = patchedContent;
   allResults.push(...patchResults);
 
+  if (
+    ccInstInfo.nativeInstallationPath &&
+    content !== originalContent &&
+    content.startsWith('// @bun @bytecode @bun-cjs')
+  ) {
+    content = content.replace('// @bun @bytecode @bun-cjs', '// @bun @bun-cjs');
+  }
+
   if (ccInstInfo.nativeInstallationPath && content === originalContent) {
     debug('No binary changes detected after patching; skipping write/repack');
     return { config, results: allResults };

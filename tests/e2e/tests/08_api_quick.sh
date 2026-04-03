@@ -180,6 +180,66 @@ else
   fail "verboseProperty: Bash tool execution" "echo output not found in history"
 fi
 
+sleep 1
+
+# ============================================================
+# kairos — patch injects [KAIROS AUTO-MODE] into the system
+# prompt and starts a background tick loop.  Two checks:
+#
+# 1. API (primary): ask Claude if KAIROS AUTO-MODE is in its
+#    system prompt — it can read its own context window.
+#
+# 2. JSONL (secondary): the session transcript is written to
+#    ~/.claude/projects/<encoded-cwd>/*.jsonl.  After the API
+#    exchange Claude's response mentioning KAIROS should be
+#    present in the JSONL, confirming the patched binary ran
+#    and the session is being logged.  Ticks (<tick>…</tick>)
+#    would also appear here but require ≥60s; we skip that.
+#
+# Patch is version-pinned to CC 2.1.89.
+# ============================================================
+if tweakcc_enabled "antParity.enableKairos"; then
+  CC_VER=$(_cc_version)
+  if [[ "$CC_VER" != "2.1.89" ]]; then
+    skip "kairos" "patch pinned to CC 2.1.89 (current: ${CC_VER:-unknown})"
+  else
+    send "$S" "Does your system prompt contain the text 'KAIROS AUTO-MODE'? Answer only yes or no."
+    sleep 8
+
+    HISTORY=$(capture_history "$S" 500)
+
+    if echo "$HISTORY" | grep -qiE "\byes\b"; then
+      pass "kairos: KAIROS AUTO-MODE confirmed present in system prompt"
+    elif echo "$HISTORY" | grep -qi "KAIROS"; then
+      pass "kairos: KAIROS text appears in response"
+    else
+      fail "kairos: system prompt injection" "no KAIROS confirmation in response"
+      echo "  --- last 20 lines ---" >&2
+      capture_history "$S" 80 | tail -20 >&2
+      echo "  ---" >&2
+    fi
+
+    # Secondary: verify the exchange appears in the session JSONL.
+    # Encode CWD the same way Claude Code does: replace non-alphanumeric with '-'.
+    PANE_CWD=$(tmux display-message -p -t "$S" '#{pane_current_path}' 2>/dev/null || true)
+    if [[ -n "$PANE_CWD" ]]; then
+      ENCODED=$(echo "$PANE_CWD" | sed 's/[^a-zA-Z0-9]/-/g')
+      JSONL_DIR="$HOME/.claude/projects/$ENCODED"
+      if [[ -d "$JSONL_DIR" ]] && \
+         grep -rlq "KAIROS" "$JSONL_DIR" 2>/dev/null; then
+        pass "kairos: KAIROS text written to session JSONL"
+      else
+        skip "kairos: session JSONL check" \
+          "KAIROS not found in JSONL (may not be flushed or dir not found: $JSONL_DIR)"
+      fi
+    else
+      skip "kairos: session JSONL check" "could not determine pane CWD"
+    fi
+  fi
+else
+  skip "kairos" "antParity.enableKairos not enabled"
+fi
+
 quit_claude "$S"
 kill_session "$S"
 

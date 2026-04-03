@@ -11,8 +11,8 @@ source "$SCRIPT_DIR/../lib.sh"
 
 section "Plan Mode Auto-Accept"
 
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  skip "autoAcceptPlanMode" "ANTHROPIC_API_KEY not set — export it to run this test"
+if ! claude_authenticated; then
+  skip "autoAcceptPlanMode" "not authenticated (set ANTHROPIC_API_KEY or run 'claude auth login')"
   summary
   exit 0
 fi

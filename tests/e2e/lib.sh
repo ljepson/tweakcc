@@ -156,6 +156,16 @@ except Exception:
 " 2>/dev/null
 }
 
+# Return 0 if Claude can make API calls (API key set OR subscription login active).
+claude_authenticated() {
+  if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    return 0
+  fi
+  claude auth status 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('loggedIn') else 1)" \
+    2>/dev/null
+}
+
 # Model used for API test sessions. Haiku is cheap and sufficient for patch validation.
 # Override with TWEAKCC_TEST_MODEL env var to use a different model.
 TWEAKCC_TEST_MODEL="${TWEAKCC_TEST_MODEL:-claude-haiku-4-5-20251001}"
@@ -213,8 +223,10 @@ start_claude() {
       *) flags+=" $1"; shift ;;
     esac
   done
-  local cmd="claude${flags}"
-  [[ -n "$env_prefix" ]] && cmd="env${env_prefix} claude${flags}"
+  # Unset env vars that Claude Code sets on itself — child instances must not
+  # detect they're running inside another Claude Code session or they skip TUI.
+  local unset_prefix="env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_API_TOKEN -u CLAUDE_MCP_API_TOKEN"
+  local cmd="${unset_prefix}${env_prefix} claude${flags}"
   tmux send-keys -t "$session" "$cmd" Enter
 }
 

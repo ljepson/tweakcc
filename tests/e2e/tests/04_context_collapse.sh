@@ -14,8 +14,8 @@ source "$SCRIPT_DIR/../lib.sh"
 
 section "Context Collapse"
 
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  skip "contextCollapse" "ANTHROPIC_API_KEY not set"
+if ! claude_authenticated; then
+  skip "contextCollapse" "not authenticated (set ANTHROPIC_API_KEY or run 'claude auth login')"
   summary
   exit 0
 fi

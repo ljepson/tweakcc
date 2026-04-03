@@ -9,6 +9,12 @@ source "$SCRIPT_DIR/../lib.sh"
 
 section "API Quick"
 
+if ! claude_authenticated; then
+  skip "api-quick" "not authenticated (set ANTHROPIC_API_KEY or run 'claude auth login')"
+  summary
+  exit 0
+fi
+
 S=$(new_session "api")
 start_claude "$S" -- --model "$TWEAKCC_TEST_MODEL"
 

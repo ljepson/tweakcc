@@ -972,12 +972,14 @@ function rebuildBunData(
     }
 
     const sourcemapBytes = getStringPointerContent(bunData, module.sourcemap);
-    const bytecodeBytes = getStringPointerContent(bunData, module.bytecode);
+    const isModified = modifiedClaudeJs && isClaudeModule(moduleName);
+    const bytecodeBytes = isModified
+      ? Buffer.alloc(0)
+      : getStringPointerContent(bunData, module.bytecode);
     const moduleInfoBytes = getStringPointerContent(bunData, module.moduleInfo);
-    const bytecodeOriginPathBytes = getStringPointerContent(
-      bunData,
-      module.bytecodeOriginPath
-    );
+    const bytecodeOriginPathBytes = isModified
+      ? Buffer.alloc(0)
+      : getStringPointerContent(bunData, module.bytecodeOriginPath);
 
     modulesMetadata.push({
       name: nameBytes,

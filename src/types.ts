@@ -252,6 +252,7 @@ export enum MainMenuItem {
   TOOLSETS = 'Toolsets',
   SUBAGENT_MODELS = 'Subagent models',
   CLAUDE_MD_ALT_NAMES = 'CLAUDE.md alternative names',
+  FEATURE_GATES = 'Feature gates',
   VIEW_SYSTEM_PROMPTS = 'View system prompts',
   RESTORE_ORIGINAL = 'Restore original Claude Code (preserves config.json)',
   OPEN_CONFIG = 'Open config.json',

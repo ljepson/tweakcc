@@ -15,11 +15,13 @@ const mockGrowthBook =
   'async function cZ8(H){let $=IWH();if($&&H in $)return Boolean($[H]);let q=bWH();if(q&&H in q)return Boolean(q[H]);return!1}';
 
 describe('growthBookAntParity', () => {
-  it('should restore env override parsing and disk override reads', () => {
+  it('should restore env override parsing with config fallback', () => {
     const result = writeGrowthBookAntParity(mockGrowthBook);
     expect(result).not.toBeNull();
     expect(result).toContain('process.env.CLAUDE_INTERNAL_FC_OVERRIDES');
     expect(result).toContain('globalThis.__tweakccGbEnvOverridesCache');
+    expect(result).toContain('A$().growthBookOverrides');
+    expect(result).toContain('Object.keys(K).length>0');
     expect(result).toContain('return bWH()??A$().growthBookOverrides??{}');
     expect(result).toContain('S$((_)=>({..._,growthBookOverrides');
     expect(result).toContain('HZH.emit()');
@@ -27,7 +29,7 @@ describe('growthBookAntParity', () => {
 
   it('should no-op when the GrowthBook parity patch is already present', () => {
     const alreadyPatched =
-      'function qZH(){let H=globalThis.__tweakccGbEnvOverridesCache;if(H!==void 0)return H;let $=process.env.CLAUDE_INTERNAL_FC_OVERRIDES;if(!$)return globalThis.__tweakccGbEnvOverridesCache=null,null;try{return globalThis.__tweakccGbEnvOverridesCache=JSON.parse($)}catch{return globalThis.__tweakccGbEnvOverridesCache=null,null}}' +
+      'function qZH(){let H=globalThis.__tweakccGbEnvOverridesCache;if(H!==void 0)return H;let $=process.env.CLAUDE_INTERNAL_FC_OVERRIDES;if($){try{return globalThis.__tweakccGbEnvOverridesCache=JSON.parse($)}catch{}}let K=z$().growthBookOverrides;if(K&&Object.keys(K).length>0)return globalThis.__tweakccGbEnvOverridesCache=K;return globalThis.__tweakccGbEnvOverridesCache=null,null}' +
       'function pW4(){if(SR.size>0)return Object.fromEntries(SR);return z$().cachedGrowthBookFeatures??{}}' +
       'function BW4(){return qZH()??z$().growthBookOverrides??{}}';
 

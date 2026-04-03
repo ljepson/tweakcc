@@ -6,7 +6,8 @@ export const writeGrowthBookAntParity = (oldFile: string): string | null => {
   if (
     oldFile.includes('globalThis.__tweakccGbEnvOverridesCache') &&
     oldFile.includes('process.env.CLAUDE_INTERNAL_FC_OVERRIDES') &&
-    oldFile.includes('growthBookOverrides??{}')
+    oldFile.includes('growthBookOverrides??{}') &&
+    oldFile.includes('Object.keys(K).length>0')
   ) {
     return oldFile;
   }
@@ -32,7 +33,7 @@ export const writeGrowthBookAntParity = (oldFile: string): string | null => {
   const startIndex = match.index;
   const endIndex = startIndex + match[0].length;
   const replacement =
-    `function ${envFnName}(){let H=globalThis.__tweakccGbEnvOverridesCache;if(H!==void 0)return H;let $=process.env.CLAUDE_INTERNAL_FC_OVERRIDES;if(!$)return globalThis.__tweakccGbEnvOverridesCache=null,null;try{return globalThis.__tweakccGbEnvOverridesCache=JSON.parse($)}catch{return globalThis.__tweakccGbEnvOverridesCache=null,null}}` +
+    `function ${envFnName}(){let H=globalThis.__tweakccGbEnvOverridesCache;if(H!==void 0)return H;let $=process.env.CLAUDE_INTERNAL_FC_OVERRIDES;if($){try{return globalThis.__tweakccGbEnvOverridesCache=JSON.parse($)}catch{}}try{let K=${configGetterFnName}().growthBookOverrides;if(K&&Object.keys(K).length>0)return globalThis.__tweakccGbEnvOverridesCache=K}catch{return null}return globalThis.__tweakccGbEnvOverridesCache=null,null}` +
     `function ${cachedFeaturesFnName}(){if(${stateMapName}.size>0)return Object.fromEntries(${stateMapName});return ${configGetterFnName}().cachedGrowthBookFeatures??{}}` +
     `function ${configOverridesFnName}(){return ${envFnName}()??${configGetterFnName}().growthBookOverrides??{}}` +
     `function ${setOverrideFnName}(H,$){let q=${configGetterFnName}();if($===void 0){let K=q.growthBookOverrides??{};if(!(H in K))return;let {[H]:_,...f}=K;S$((A)=>{let z={...A};if(Object.keys(f).length>0)z.growthBookOverrides=f;else delete z.growthBookOverrides;return z}),HZH.emit();return}let K=q.growthBookOverrides??{};if(K[H]===$)return;S$((_)=>({..._,growthBookOverrides:{...(_.growthBookOverrides??{}),[H]:$}})),HZH.emit()}` +

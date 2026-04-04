@@ -1066,7 +1066,7 @@ const escapeNonAsciiChars = (text: string): string => {
   });
 };
 
-const buildSearchRegexFromPieces = (
+export const buildSearchRegexFromPieces = (
   pieces: string[],
   ccVersion: string,
   buildTime?: string

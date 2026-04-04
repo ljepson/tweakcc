@@ -1172,4 +1172,56 @@ World`;
       expect(result.incomplete).toBe(false);
     });
   });
+
+  describe('buildSearchRegexFromPieces — Windows newline handling', () => {
+    const ccVersion = '2.1.92';
+
+    it('should match plain LF newlines (Linux/macOS template literals)', () => {
+      const pieces = ['Hello\nWorld'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      expect(regex.test('Hello\nWorld')).toBe(true);
+    });
+
+    it('should match literal \\n (string literals)', () => {
+      const pieces = ['Hello\nWorld'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      expect(regex.test('Hello\\nWorld')).toBe(true);
+    });
+
+    it('should match \\r\\n — backslash-r + LF (Windows PE template literals)', () => {
+      const pieces = ['Hello\nWorld'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      // Bun's Windows PE compiler writes: \ (0x5C) + r (0x72) + LF (0x0A)
+      expect(regex.test('Hello\\r\nWorld')).toBe(true);
+    });
+
+    it('should match mixed newline styles in the same content', () => {
+      const pieces = ['Line1\nLine2\nLine3'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      // First newline is Windows PE style, second is plain LF
+      expect(regex.test('Line1\\r\nLine2\nLine3')).toBe(true);
+    });
+
+    it('should NOT match bare CR+LF (real \\r\\n bytes)', () => {
+      const pieces = ['Hello\nWorld'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      // Real CRLF (0x0D + 0x0A) should NOT match — that's not what Bun produces
+      expect(regex.test('Hello\r\nWorld')).toBe(false);
+    });
+  });
 });

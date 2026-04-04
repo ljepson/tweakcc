@@ -1090,9 +1090,11 @@ const buildSearchRegexFromPieces = (
 
     // Handle newlines: match both actual newlines (template literals) and literal \n (string literals)
     // In regex pattern: \n matches newline, \\n matches literal backslash-n
+    // On Windows, Bun's PE compiler writes template-literal newlines as \r\n
+    // (literal backslash + r + LF), so we also match an optional \r before each newline.
     const withNewlineHandling = withNonAsciiHandling.replace(
       /\n/g,
-      '(?:\n|\\\\n)'
+      '(?:[\\\\]r)?(?:\n|\\\\n)'
     );
     pattern += withNewlineHandling;
 

@@ -353,16 +353,35 @@ export async function replaceFileBreakingHardLinks(
     );
   }
 
-  // Unlink the file first to break any hard links
+  // On Windows, running executables can't be unlinked or overwritten, but CAN
+  // be renamed. Move the old file aside, write the new one at the original
+  // path, then clean up the renamed copy.
+  const tombstone = filePath + '.old';
+
+  // Remove any leftover tombstone from a previous run
   try {
-    await fs.unlink(filePath);
-    debug(`[${operation}] Unlinked ${filePath} to break hard links`);
-  } catch (error) {
-    // File might not exist, which is fine
-    debug(`[${operation}] Could not unlink ${filePath}: ${error}`);
+    await fs.unlink(tombstone);
+  } catch {
+    // not there — fine
   }
 
-  // Write the new content
+  // Try rename first (works even on locked Windows executables)
+  let renamed = false;
+  try {
+    await fs.rename(filePath, tombstone);
+    renamed = true;
+    debug(`[${operation}] Renamed ${filePath} → ${tombstone}`);
+  } catch {
+    // Rename failed — fall back to unlink (Linux/macOS, or file doesn't exist)
+    try {
+      await fs.unlink(filePath);
+      debug(`[${operation}] Unlinked ${filePath} to break hard links`);
+    } catch (error) {
+      debug(`[${operation}] Could not unlink ${filePath}: ${error}`);
+    }
+  }
+
+  // Write the new content at the original path
   await fs.writeFile(filePath, newContent);
 
   // Restore the original permissions
@@ -370,6 +389,19 @@ export async function replaceFileBreakingHardLinks(
   debug(
     `[${operation}] Restored permissions to ${(originalMode & parseInt('777', 8)).toString(8)}`
   );
+
+  // Clean up the tombstone (best-effort — on Windows it stays locked until
+  // the running process exits, which is fine; next apply will remove it)
+  if (renamed) {
+    try {
+      await fs.unlink(tombstone);
+      debug(`[${operation}] Cleaned up ${tombstone}`);
+    } catch {
+      debug(
+        `[${operation}] ${tombstone} still locked — will be cleaned up next run`
+      );
+    }
+  }
 }
 
 export async function doesFileExist(filePath: string): Promise<boolean> {

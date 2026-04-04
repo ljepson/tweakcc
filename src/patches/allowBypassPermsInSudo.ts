@@ -6,6 +6,12 @@ import { showDiff } from './index';
  * Patch the sudo permissions check to allow bypassing permissions with --dangerously-skip-permissions, even when running with root/sudo privileges.
  */
 export const writeAllowBypassPermsInSudo = (file: string): string | null => {
+  // The sudo/root check is Unix-only; on Windows the guard
+  // (process.platform !== "win32") causes tree-shaking to remove the string.
+  if (process.platform === 'win32') {
+    return file;
+  }
+
   // Find pattern in minified code
   const pattern =
     /console\.error\("--dangerously-skip-permissions cannot be used with root\/sudo privileges for security reasons"\),process\.exit\(1\)/;

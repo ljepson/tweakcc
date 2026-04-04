@@ -1224,4 +1224,53 @@ World`;
       expect(regex.test('Hello\r\nWorld')).toBe(false);
     });
   });
+
+  describe('buildSearchRegexFromPieces — Unicode escape handling', () => {
+    const ccVersion = '2.1.92';
+
+    it('should match literal non-ASCII character (§)', () => {
+      const pieces = ['See §Thinking'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      expect(regex.test('See \u00a7Thinking')).toBe(true);
+    });
+
+    it('should match \\uXXXX escape for non-ASCII character', () => {
+      const pieces = ['See \u00a7Thinking'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      // Binary has literal \u00a7 (6 chars)
+      expect(regex.test('See \\u00a7Thinking')).toBe(true);
+    });
+
+    it('should match \\xHH escape for code points <= 0xFF (Bun Windows PE)', () => {
+      const pieces = ['See \u00a7Thinking'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      // Bun Windows PE uses \xA7 instead of \u00a7 for code points <= 0xFF
+      expect(regex.test('See \\xA7Thinking')).toBe(true);
+    });
+
+    it('should match \\uXXXX escape for higher code points (→ = U+2192)', () => {
+      const pieces = ['effort \u2192 fewer'];
+      const regex = new RegExp(
+        promptSync.buildSearchRegexFromPieces(pieces, ccVersion),
+        'si'
+      );
+      expect(regex.test('effort \\u2192 fewer')).toBe(true);
+    });
+
+    it('should NOT produce \\xHH alternative for code points > 0xFF', () => {
+      const pieces = ['effort \u2192 fewer'];
+      const pattern = promptSync.buildSearchRegexFromPieces(pieces, ccVersion);
+      // \u2192 is > 0xFF, so no \x alternative should be generated
+      expect(pattern).not.toContain('\\\\x');
+    });
+  });
 });

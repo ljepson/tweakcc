@@ -1043,14 +1043,21 @@ export const getSystemPromptDefinitions = ():
  * Converts non-ASCII characters to regex alternation patterns that match both
  * literal and Unicode-escaped forms (e.g., … matches both "…" and "\u2026").
  * This handles cases where cli.js has escaped Unicode characters.
+ * For code points ≤ 0xFF, Bun's Windows PE compiler may use \xHH instead of
+ * \u00HH, so we match both short and long hex escapes.
  */
 const escapeNonAsciiForRegex = (text: string): string => {
   // eslint-disable-next-line no-control-regex
   return text.replace(/[^\x00-\x7F]/g, char => {
     const codePoint = char.charCodeAt(0);
-    const escaped = `\\\\u${codePoint.toString(16).padStart(4, '0')}`;
-    // Match either the literal character OR the escaped version
-    return `(?:${char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|${escaped})`;
+    const escapedU = `\\\\u${codePoint.toString(16).padStart(4, '0')}`;
+    const escapedChar = char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // For code points ≤ 0xFF, also match \xHH (Bun Windows PE uses this form)
+    if (codePoint <= 0xff) {
+      const escapedX = `\\\\x${codePoint.toString(16).padStart(2, '0').toUpperCase()}`;
+      return `(?:${escapedChar}|${escapedU}|${escapedX})`;
+    }
+    return `(?:${escapedChar}|${escapedU})`;
   });
 };
 

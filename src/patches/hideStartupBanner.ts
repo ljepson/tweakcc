@@ -19,7 +19,7 @@ const getStartupBannerLocation = (oldFile: string): LocationResult | null => {
   // "Welcome to Claude Code" string and Apple_Terminal branch.
   // Pattern: function NAME(){...Apple_Terminal...Welcome to Claude Code...}
   const pattern2 =
-    /function ([$\w]+)\(\)\{let [$\w]+=[$\w]+\.c\(\d+\).{0,200}Apple_Terminal.{0,200}Welcome to Claude Code/;
+    /function ([$\w]+)\(\)\{let [$\w]+=[$\w]+\.[$\w]+\(\d+\).{0,200}Apple_Terminal.{0,200}Welcome to Claude Code/;
   const match2 = oldFile.match(pattern2);
 
   if (match2 && match2.index !== undefined) {

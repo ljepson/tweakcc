@@ -118,7 +118,7 @@ const applyIndicatorViewPatch = (
 
   // 4. Find the LAST createElement call in that subsection to get the insertion point
   const createElementPattern =
-    /[^$\w]([$\w]+)\.createElement\(([$\w]+),(?:\w+|\{[^}]+\}),/g;
+    /[^$\w]([$\w]+)\.createElement\(([$\w]+),(?:[$\w]+|\{[^}]+\}),/g;
   const matches = Array.from(lookbackSubstring.matchAll(createElementPattern));
   if (matches.length === 0) {
     console.error(

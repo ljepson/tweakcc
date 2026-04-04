@@ -5,15 +5,16 @@ import {
 } from './verificationAgent';
 
 const mockBuiltInAgents =
-  'var ul5;var xKK=G(()=>{dY();wA();ul5=`You are the verification specialist.' +
+  'var ul5;var xKK=Gz(()=>{rY();wQ();ul5=`You are the verification specialist.' +
   ' Prompt body`});' +
   'function RnH(){return u$("tengu_amber_stoat",!0)}' +
-  'function hV$(){if(dH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&Q6())return[];let H=[dd,CKK];if(RnH())H.push(gd,EV$);if(process.env.CLAUDE_CODE_ENTRYPOINT!=="sdk-ts"&&process.env.CLAUDE_CODE_ENTRYPOINT!=="sdk-py"&&process.env.CLAUDE_CODE_ENTRYPOINT!=="sdk-cli")H.push(RKK);return H}';
+  'function hV$(){if(pH(process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS)&&X6())return[];let H=[dd,CKK];if(RnH())H.push(gd,EV$);if(process.env.CLAUDE_CODE_ENTRYPOINT!=="sdk-ts"&&process.env.CLAUDE_CODE_ENTRYPOINT!=="sdk-py"&&process.env.CLAUDE_CODE_ENTRYPOINT!=="sdk-cli")H.push(RKK);return H}';
 
 const mockTaskVerification =
-  'async call({todos:H},c){let q=c.getAppState(),K=c.agentId??V$(),_=q.todos[K]??[],A=H.every((t)=>t.status==="completed")?[]:H,z=!1;return c.setAppState((s)=>({...s,todos:{...s.todos,[K]:A}})),{data:{oldTodos:_,newTodos:H,verificationNudgeNeeded:z}}}' +
+  'async function m2(H){let $=BC(H),q;try{q=await yG.readdir($)}catch{return[]}let K=q.filter((f)=>f.endsWith(".json")).map((f)=>f.replace(".json",""));return(await Promise.all(K.map((f)=>Dp(H,f)))).filter((f)=>f!==null)}' +
+  'async call({todos:H},c){let q=c.getAppState(),K=c.agentId??k$(),_=q.todos[K]??[],A=H.every((t)=>t.status==="completed")?[]:H,z=!1;return c.setAppState((s)=>({...s,todos:{...s.todos,[K]:A}})),{data:{oldTodos:_,newTodos:H,verificationNudgeNeeded:z}}}' +
   'mapToolResultToToolResultBlockParam({verificationNudgeNeeded:H},$){return H}' +
-  'async call({taskId:H,subject:$,description:q,activeForm:K,status:_,owner:f,addBlocks:A,addBlockedBy:z,metadata:O},Y){let w=Jv();let M=await Sm(w,H);let D=[],j={};if(Object.keys(j).length>0)await vU(w,H,j);let P=!1;return{data:{success:!0,taskId:H,updatedFields:D,statusChange:j.status!==void 0?{from:M.status,to:j.status}:void 0,verificationNudgeNeeded:P}}}';
+  'async call({taskId:H,subject:$,description:q,activeForm:K,status:_,owner:f,addBlocks:A,addBlockedBy:z,metadata:O},Y){let w=Fv();let M=await Dp(w,H);let D=[],j={};if(Object.keys(j).length>0)await vU(w,H,j);let P=!1;return{data:{success:!0,taskId:H,updatedFields:D,statusChange:j.status!==void 0?{from:M.status,to:j.status}:void 0,verificationNudgeNeeded:P}}}';
 
 describe('verificationAgentAvailability', () => {
   it('should add the verification agent to the built-in agent list', () => {
@@ -53,7 +54,7 @@ describe('autoLaunchVerificationAgent', () => {
     expect(result).toContain(
       `prompt:"Verify the recent implementation changes from the parent conversation. Review the parent's current-turn tool calls and issue a PASS, FAIL, or PARTIAL verdict with command evidence."`
     );
-    expect(result).toContain(`await $2(w)`);
+    expect(result).toContain(`await m2(w)`);
   });
 
   it('should not destroy unrelated microcompact or session-memory shapes', () => {

@@ -9,76 +9,140 @@ export const writeMicrocompactFallback = (oldFile: string): string | null => {
     ) &&
     oldFile.includes('TIME-BASED MC') &&
     oldFile.includes(
-      "{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}"
+      "{type:'system',subtype:'informational',content:'Time-based microcompact applied',level:'info',uuid:crypto.randomUUID(),timestamp:new Date().toISOString()}"
     )
   ) {
     return oldFile;
   }
 
-  // Step 1: Patch W7K to use our setting instead of just the GB feature gate
-  // Binary: var W7K=G(()=>{e8();Gg4={enabled:!1,gapThresholdMinutes:60,keepRecent:5}});
-  const w7kPattern =
-    /var ([$\w]+)=G\(\(\)=>{e8\(\);([$\w]+)={enabled:!1,gapThresholdMinutes:60,keepRecent:5}}\);/;
-  const w7kMatch = oldFile.match(w7kPattern);
+  // Step 1: Patch the config object to use our setting instead of just the GB feature gate
+  //
+  // Old form (pre-2.1.92):
+  //   var W7K=Z(()=>{e8();Gg4={enabled:!1,gapThresholdMinutes:60,keepRecent:5}});
+  //
+  // New form (2.1.92+):
+  //   var Hl4;var I9K=Z(()=>{e8();Hl4={enabled:!1,gapThresholdMinutes:60,keepRecent:5}});
+  //
+  // The config var may be declared inline (old) or hoisted with a separate var (new).
+  // Match both by making the leading `var X;` optional.
+  // The module initializer call (e8, f9, etc.) is captured dynamically.
+  const configPattern =
+    /(?:var ([$\w]+);)?var ([$\w]+)=([$\w]+)\(\(\)=>{([$\w]+)\(\);([$\w]+)={enabled:!1,gapThresholdMinutes:60,keepRecent:5}}\);/;
+  const configMatch = oldFile.match(configPattern);
 
-  if (!w7kMatch || w7kMatch.index === undefined) {
-    console.error('patch: microcompactFallback: failed to find W7K definition');
+  if (!configMatch || configMatch.index === undefined) {
+    console.error(
+      'patch: microcompactFallback: failed to find config definition'
+    );
     return null;
   }
 
-  const w7kVar = w7kMatch[1];
-  const g4Var = w7kMatch[2];
+  // Group 1: hoisted var name (may be undefined if old form)
+  // Group 2: lazy-init wrapper var name
+  // Group 3: lazy-init function name (Z, G, etc.)
+  // Group 4: module initializer function name (e8, f9, etc.)
+  // Group 5: config object var name (assigned inside the callback)
+  const hoistedVar = configMatch[1]; // undefined in old form
+  const lazyWrapperVar = configMatch[2];
+  const lazyInitFn = configMatch[3];
+  const moduleInitFn = configMatch[4];
+  const configVar = configMatch[5];
 
-  // Step 2: Patch Ng4 to inject the system message nudge
-  // Original ends with: ...CTH(),qr(),{messages:w}}
-  // We want to add: ,{messages:[...w,{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}]}}
-  // Pattern needs to be more flexible about what comes before the return.
-  const ng4Pattern =
-    /function ([$\w]+)\([$\w]+,[$\w]+\)\{.{10,2000}CTH\(\),qr\(\),{messages:([$\w]+)}}/g;
+  // Sanity: in the new form, hoistedVar and configVar should be the same identifier
+  if (hoistedVar && hoistedVar !== configVar) {
+    console.error(
+      `patch: microcompactFallback: hoisted var '${hoistedVar}' does not match config var '${configVar}'`
+    );
+    return null;
+  }
 
-  const ng4Matches = Array.from(oldFile.matchAll(ng4Pattern));
-  // Find the one that has the log string or similar markers
-  const ng4Match = ng4Matches.find(
+  // Step 2: Find the function that returns the microcompact result with messages.
+  // The tail of this function looks like:
+  //   ...),d0H(),cr(),{messages:w,tokensSaved:Y}}
+  // We match the two function calls and the return object at the end.
+  // Using a non-greedy scan inside the function body, then capturing the tail.
+  const funcPattern =
+    /function ([$\w]+)\([$\w]+,[$\w]+(?:,[$\w]+)?\)\{.{10,2000}?([$\w]+)\(\),([$\w]+)\(\),{messages:([$\w]+)(?:,[$\w]+:[$\w]+)*}}/g;
+
+  const funcMatches = Array.from(oldFile.matchAll(funcPattern));
+  const funcMatch = funcMatches.find(
     m =>
       m[0].includes('tengu_time_based_microcompact') ||
       m[0].includes('TIME-BASED MC')
   );
 
-  if (!ng4Match || ng4Match.index === undefined) {
+  if (!funcMatch || funcMatch.index === undefined) {
     console.error(
-      'patch: microcompactFallback: failed to find Ng4 implementation'
+      'patch: microcompactFallback: failed to find microcompact function'
     );
     return null;
   }
 
-  const messagesVar = ng4Match[2];
+  const preReturnFn1 = funcMatch[2];
+  const preReturnFn2 = funcMatch[3];
+  const messagesVar = funcMatch[4];
 
   let newFile = oldFile;
 
-  // Replace W7K
-  const w7kReplacement = `var ${w7kVar}=G(()=>{e8();${g4Var}={enabled:globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false,gapThresholdMinutes:60,keepRecent:5}});`;
-  newFile = newFile.replace(w7kMatch[0], w7kReplacement);
+  // Replace config definition — preserve the hoisted var declaration if present
+  const configPrefix = hoistedVar ? `var ${hoistedVar};` : '';
+  const configReplacement = `${configPrefix}var ${lazyWrapperVar}=${lazyInitFn}(()=>{${moduleInitFn}();${configVar}={enabled:globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false,gapThresholdMinutes:60,keepRecent:5}});`;
+  newFile = newFile.replace(configMatch[0], configReplacement);
 
-  // Replace Ng4 return
-  const ng4Old = `CTH(),qr(),{messages:${messagesVar}}`;
-  const ng4New = `CTH(),qr(),{messages:[...${messagesVar},{type:'system',subtype:'informational',content:JOf,level:'info',uuid:vG.randomUUID(),timestamp:new Date().toISOString()}]}`;
+  // Replace the return statement to inject the system nudge message.
+  // Build the old return tail dynamically from captured groups.
+  // Match the return object with optional extra fields (e.g., tokensSaved).
+  const returnTailPattern = new RegExp(
+    escapeRegex(
+      `${preReturnFn1}(),${preReturnFn2}(),{messages:${messagesVar}`
+    ) +
+      '(?:,[$\\w]+:[$\\w]+)*' +
+      '}'
+  );
+  const returnTailMatch = newFile.match(returnTailPattern);
 
-  if (!newFile.includes(ng4Old)) {
+  if (!returnTailMatch) {
     console.error(
-      'patch: microcompactFallback: failed to find Ng4 return statement in modified file'
+      'patch: microcompactFallback: failed to find return statement in modified file'
     );
     return null;
   }
 
-  newFile = newFile.replace(ng4Old, ng4New);
+  const returnTailOld = returnTailMatch[0];
+  // Strip the trailing } to get the inner content, then rebuild with the spread messages
+  const returnObjInner = returnTailOld.slice(
+    returnTailOld.indexOf('{messages:') + 1,
+    -1
+  );
+  // returnObjInner is like: messages:w,tokensSaved:Y
+  // We need to replace messages:VAR with messages:[...VAR,{nudge}]
+  const nudgeObj = `{type:'system',subtype:'informational',content:'Time-based microcompact applied',level:'info',uuid:crypto.randomUUID(),timestamp:new Date().toISOString()}`;
+  const newReturnObjInner = returnObjInner.replace(
+    `messages:${messagesVar}`,
+    `messages:[...${messagesVar},${nudgeObj}]`
+  );
+  const returnTailNew = `${preReturnFn1}(),${preReturnFn2}(),{${newReturnObjInner}}`;
+
+  if (!newFile.includes(returnTailOld)) {
+    console.error(
+      'patch: microcompactFallback: return tail not found after config replacement'
+    );
+    return null;
+  }
+
+  newFile = newFile.replace(returnTailOld, returnTailNew);
 
   showDiff(
     oldFile,
     newFile,
     'Microcompact Fallback (Nudge + Enablement)',
-    w7kMatch.index,
-    w7kMatch.index + w7kMatch[0].length
+    configMatch.index,
+    configMatch.index + configMatch[0].length
   );
 
   return newFile;
 };
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

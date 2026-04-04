@@ -51,34 +51,43 @@ const getNonBlockingCheckLocation = (
 /**
  * Find the MCP batch size default value location.
  *
- * Pattern: parseInt(process.env.MCP_SERVER_CONNECTION_BATCH_SIZE||"",10)||3
- * We want to replace the "3" with a higher value.
+ * The default value appears in two known forms across CC versions:
+ *   v2.1.91-: parseInt(process.env.MCP_SERVER_CONNECTION_BATCH_SIZE||"",10)||3
+ *   v2.1.92+: ...BATCH_SIZE||"",10);return H>0?H:3
+ * We want to replace the default "3" with a higher value.
  */
 const getBatchSizeLocation = (oldFile: string): LocationResult | null => {
-  // Match the full pattern and capture position of the default "3"
-  // Pattern: MCP_SERVER_CONNECTION_BATCH_SIZE||"",10)||3
-  const pattern = /MCP_SERVER_CONNECTION_BATCH_SIZE\|\|"",10\)\|\|(\d+)/;
-  const match = oldFile.match(pattern);
+  const patterns = [
+    // v2.1.92+: ternary fallback — ...BATCH_SIZE||"",10);return VAR>0?VAR:3
+    /MCP_SERVER_CONNECTION_BATCH_SIZE\|\|"",10\);return [$\w]+>0\?[$\w]+:(\d+)/,
+    // v2.1.91-: logical-or fallback — ...BATCH_SIZE||"",10)||3
+    /MCP_SERVER_CONNECTION_BATCH_SIZE\|\|"",10\)\|\|(\d+)/,
+  ];
 
-  if (!match || match.index === undefined) {
-    console.error(
-      'patch: mcpStartup: failed to find MCP_SERVER_CONNECTION_BATCH_SIZE default'
-    );
-    return null;
+  for (const pattern of patterns) {
+    const match = oldFile.match(pattern);
+    if (!match || match.index === undefined) {
+      continue;
+    }
+
+    // Find the position of the default number (the captured group)
+    const fullMatch = match[0];
+    const defaultValue = match[1];
+    const defaultValueOffset = fullMatch.lastIndexOf(defaultValue);
+
+    const startIndex = match.index + defaultValueOffset;
+    const endIndex = startIndex + defaultValue.length;
+
+    return {
+      startIndex,
+      endIndex,
+    };
   }
 
-  // Find the position of the default number (the captured group)
-  const fullMatch = match[0];
-  const defaultValue = match[1];
-  const defaultValueOffset = fullMatch.lastIndexOf(defaultValue);
-
-  const startIndex = match.index + defaultValueOffset;
-  const endIndex = startIndex + defaultValue.length;
-
-  return {
-    startIndex,
-    endIndex,
-  };
+  console.error(
+    'patch: mcpStartup: failed to find MCP_SERVER_CONNECTION_BATCH_SIZE default'
+  );
+  return null;
 };
 
 /**

@@ -1,4 +1,4 @@
-import { showDiff } from './index';
+import { escapeIdent, showDiff } from './index';
 
 export const writeKairos = (oldFile: string): string | null => {
   const kairosManager = `
@@ -31,14 +31,14 @@ globalThis.__tweakccKairos = new class KairosManager {
 
   getSystemPromptFragment() {
     if (!this.isKairosEnabled()) return "";
-    return "\\n\\n[KAIROS AUTO-MODE] " + (this.isFocused 
-      ? "User is watching. Propose actions and wait for confirmation via SendUserMessage." 
+    return "\\n\\n[KAIROS AUTO-MODE] " + (this.isFocused
+      ? "User is watching. Propose actions and wait for confirmation via SendUserMessage."
       : "User is away. You are authorized to act autonomously: execute tests, perform commits, and manage the environment. Brief the user on return.");
   }
 
   checkTick(onFire) {
     if (!this.isKairosEnabled() || this.isDeepSleep) return;
-    
+
     if (require("fs").existsSync(require("path").join(require("os").homedir(), ".claude", "kairos-stop"))) {
        this.isDeepSleep = true;
        return;
@@ -78,18 +78,28 @@ globalThis.__tweakccKairos = new class KairosManager {
     newFile = kairosManager + oldFile;
   }
 
-  // 1. Enable KAIROS feature gates in u$
-  const uPattern = /function u\$\(H,\$\)\{/;
-  const uMatch = newFile.match(uPattern);
-  if (uMatch) {
-    newFile = newFile.replace(
-      uMatch[0],
-      uMatch[0] +
-        'if(globalThis.__tweakccKairos?.isKairosEnabled() && (H==="tengu_kairos_cron" || H==="tengu_kairos_brief")) return true;'
+  // 1. Enable KAIROS feature gates
+  // Phase 1: discover the gate function name from its call site
+  const gateCallPattern = /([$\w]+)\("tengu_kairos_cron"/;
+  const gateCallMatch = newFile.match(gateCallPattern);
+  if (gateCallMatch) {
+    const gateFnName = gateCallMatch[1];
+    // Phase 2: find its definition and capture the first param (feature name arg)
+    const gateFnPattern = new RegExp(
+      `function ${escapeIdent(gateFnName)}\\(([$\\w]+)[^)]*\\)\\{`
     );
+    const gateFnMatch = newFile.match(gateFnPattern);
+    if (gateFnMatch) {
+      const featureParam = gateFnMatch[1];
+      newFile = newFile.replace(
+        gateFnMatch[0],
+        gateFnMatch[0] +
+          `if(globalThis.__tweakccKairos?.isKairosEnabled() && (${featureParam}==="tengu_kairos_cron" || ${featureParam}==="tengu_kairos_brief")) return true;`
+      );
+    }
   }
 
-  // 2. Patch system prompt (wA6)
+  // 2. Patch system prompt
   const wa6Pattern =
     /return\{defaultSystemPrompt:([$\w]+),userContext:([$\w]+),systemContext:([$\w]+)\}/;
   const wa6Match = newFile.match(wa6Pattern);
@@ -100,34 +110,68 @@ globalThis.__tweakccKairos = new class KairosManager {
     );
   }
 
-  // 3. Inject tick loop into Vkf (print loop)
+  // 3. Inject tick loop into print loop
+  // Expanded pattern captures all minified names needed for the replacement:
+  //   1: scheduler var        (VH)
+  //   2: cron manager         (Gs7)
+  //   3: cron config          (Zs7)
+  //   4: killed flag          (X)     - from if(X)return inside onFire
+  //   5: prompt inject fn     (_M)    - sends prompt messages
+  //   6: UUID source          (Rj)    - .randomUUID()
+  //   7: workload constant    (OZ$)   - "cron"
+  //   8: flush fn             (JH)    - called after prompt inject
+  //   9: loading flag         (j)     - from isLoading:()=>j||X
   const vkfNeedle =
-    /let ([$\w]+)=null;if\(([$\w]+)&&([$\w]+)\?\.isKairosCronEnabled\(\)\)/;
+    /let ([$\w]+)=null;if\(([$\w]+)&&([$\w]+)\?\.isKairosCronEnabled\(\)\)\1=\2\.createCronScheduler\(\{onFire:\([$\w]+\)=>\{if\(([$\w]+)\)return;([$\w]+)\(\{mode:"prompt",value:[$\w]+,uuid:([$\w]+)\.randomUUID\(\),priority:"later",isMeta:!0,workload:([$\w]+)\}\),([$\w]+)\(\)\},isLoading:\(\)=>([$\w]+)\|\|\4/;
   const vkfMatch = newFile.match(vkfNeedle);
   if (vkfMatch) {
     const kVar = vkfMatch[1];
-    const replacement = `let ${kVar}=null; if(globalThis.__tweakccKairos.isKairosEnabled()){${kVar}={start:function(){this.iv=setInterval(()=>{if(typeof j!=="undefined"&&!j&&typeof X!=="undefined"&&!X)globalThis.__tweakccKairos.checkTick((v)=>{nD({mode:"prompt",value:v,uuid:DP.randomUUID(),priority:"later",isMeta:!0,workload:$W$});yH()})},5000)},stop:function(){clearInterval(this.iv)}};${kVar}.start()}else if(${vkfMatch[2]}&&${vkfMatch[3]}?.isKairosCronEnabled())`;
+    const cronMgr = vkfMatch[2];
+    const cronCfg = vkfMatch[3];
+    const killedFlag = vkfMatch[4];
+    const promptFn = vkfMatch[5];
+    const uuidSrc = vkfMatch[6];
+    const workloadConst = vkfMatch[7];
+    const flushFn = vkfMatch[8];
+    const loadingFlag = vkfMatch[9];
+    const replacement =
+      `let ${kVar}=null; if(globalThis.__tweakccKairos.isKairosEnabled()){${kVar}={start:function(){this.iv=setInterval(()=>{` +
+      `if(typeof ${loadingFlag}!=="undefined"&&!${loadingFlag}&&typeof ${killedFlag}!=="undefined"&&!${killedFlag})` +
+      `globalThis.__tweakccKairos.checkTick((v)=>{${promptFn}({mode:"prompt",value:v,uuid:${uuidSrc}.randomUUID(),priority:"later",isMeta:!0,workload:${workloadConst}});${flushFn}()})` +
+      `},5000)},stop:function(){clearInterval(this.iv)}};${kVar}.start()}else if(${cronMgr}&&${cronCfg}?.isKairosCronEnabled())` +
+      `${kVar}=${cronMgr}.createCronScheduler({onFire:(${kVar}_v)=>{if(${killedFlag})return;${promptFn}({mode:"prompt",value:${kVar}_v,uuid:${uuidSrc}.randomUUID(),priority:"later",isMeta:!0,workload:${workloadConst}}),${flushFn}()},isLoading:()=>${loadingFlag}||${killedFlag}`;
     newFile = newFile.replace(vkfMatch[0], replacement);
   }
 
-  // 4. Inject focus tracking into cQH (Ink)
-  const inkPattern = /class cQH\{[$\w;=!]*constructor\(H\)\{this\.options=H;/;
+  // 4. Inject focus tracking into Ink class
+  const inkPattern =
+    /class ([$\w]+)\{[$\w;=!]*constructor\(([$\w]+)\)\{this\.options=\2;/;
   const inkMatch = newFile.match(inkPattern);
   if (inkMatch) {
+    const ctorParam = inkMatch[2];
     newFile = newFile.replace(
       inkMatch[0],
       inkMatch[0] +
-        'H.stdout.on("focus_gained",()=>globalThis.__tweakccKairos?.updateFocus(true));H.stdout.on("focus_lost",()=>globalThis.__tweakccKairos?.updateFocus(false));'
+        `${ctorParam}.stdout.on("focus_gained",()=>globalThis.__tweakccKairos?.updateFocus(true));${ctorParam}.stdout.on("focus_lost",()=>globalThis.__tweakccKairos?.updateFocus(false));`
     );
   }
 
   // 5. Cost tracking
+  // First, discover workload getter and cron constant from their definitions
+  const workloadGetterPattern =
+    /function ([$\w]+)\(\)\{return ([$\w]+)\.getStore\(\)\?\.workload\}/;
+  const workloadGetterMatch = newFile.match(workloadGetterPattern);
+  const cronConstPattern = /([$\w]+)="cron"/;
+  const cronConstMatch = newFile.match(cronConstPattern);
+
   const costPattern = /this\.totalUsage=([$\w]+)\(this\.totalUsage,([$\w]+)\)/;
   const costMatch = newFile.match(costPattern);
-  if (costMatch) {
+  if (costMatch && workloadGetterMatch && cronConstMatch) {
+    const workloadGetter = workloadGetterMatch[1];
+    const cronConst = cronConstMatch[1];
     newFile = newFile.replace(
       costMatch[0],
-      `this.totalUsage=${costMatch[1]}(this.totalUsage,${costMatch[2]}); if(globalThis.__tweakccKairos?.isKairosEnabled() && (typeof J!=="undefined" && J===(typeof $W$!=="undefined"?$W$:null))) globalThis.__tweakccKairos.autonomousCostUsd += (this.totalUsage.cost ?? 0);`
+      `this.totalUsage=${costMatch[1]}(this.totalUsage,${costMatch[2]}); if(globalThis.__tweakccKairos?.isKairosEnabled() && ${workloadGetter}()===${cronConst}) globalThis.__tweakccKairos.autonomousCostUsd += (this.totalUsage.cost ?? 0);`
     );
   }
 

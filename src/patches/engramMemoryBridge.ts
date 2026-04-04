@@ -16,7 +16,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const permissionPattern =
-    /(if\(\(\$\.name===[$\w]+\|\|\$\.name===[$\w]+\)&&"file_path"\s*in q\)\{let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\$,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{H\} are allowed`\)\}\})/;
+    /(if\(\(\$\.name===[$\w]+\|\|\$\.name===[$\w]+\)&&"file_path"\s*in q\)\{let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\$,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
   const permissionMatch = oldFile.match(permissionPattern);
 
   if (
@@ -97,13 +97,10 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const gatePattern =
-    /async function z\(O,Y\)\{if\(O\.toolUseContext\.agentId\)return;if\(![$\w]+\("tengu_passport_quail",!1\)\)return;(?:let [$\w]+=O\.toolUseContext\.getAppState\(\)\.mcp\.clients;if\(![$\w]+\.some\(c=>c\.name==="engram"&&c\.type==="connected"\)\)return;)?if\(!n4\(\)\)return;if\(A_\(\)\)return;/;
+    /async function [$\w]+\(([$\w]+),[$\w]+\)\{if\(\1\.toolUseContext\.agentId\)return;if\(![$\w]+\("tengu_passport_quail",!1\)\)return;(?:let [$\w]+=\1\.toolUseContext\.getAppState\(\)\.mcp\.clients;if\(![$\w]+\.some\(c=>c\.name==="engram"&&c\.type==="connected"\)\)return;)?if\(!([$\w]+)\(\)\)return;if\(([$\w]+)\(\)\)return;/;
   const gateMatch = afterPromptFile.match(gatePattern);
 
-  if (
-    !hasEngramGate &&
-    (!gateMatch || gateMatch.index === undefined)
-  ) {
+  if (!hasEngramGate && (!gateMatch || gateMatch.index === undefined)) {
     console.error(
       'patch: engramMemoryBridge: failed to find extract-memories execution gate'
     );
@@ -114,9 +111,13 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   if (!hasEngramGate) {
     const gateNeedle = gateMatch![0];
     const gateIndex = gateMatch!.index!;
+    const ctxParam = gateMatch![1];
+    const autoMemFn = gateMatch![2];
+    const isRemoteFn = gateMatch![3];
+    const oldTail = `if(!${autoMemFn}())return;if(${isRemoteFn}())return;`;
     const gateReplacement = gateNeedle.replace(
-      'if(!n4())return;if(A_())return;',
-      'let w=O.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!n4())return;if(A_())return;'
+      oldTail,
+      `let w=${ctxParam}.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;${oldTail}`
     );
     finalFile =
       afterPromptFile.slice(0, gateIndex) +

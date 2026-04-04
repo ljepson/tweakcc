@@ -75,7 +75,7 @@ export const writeThinkingBlockStyling = (oldFile: string): string | null => {
   }
 
   const pattern =
-    /\{thinking:([$\w]+)\}.{0,400}(?:∴|\\u2234) Thinking.{0,700}(?:…|\\u2026).{0,200}\b[$\w]+(?:\.default)?\.createElement\(([$\w]+,null),\1\)/;
+    /\{thinking:([$\w]+)\}.{0,400}(?:∴|\\u2234) Thinking.{0,700}(?:…|\\u2026).{0,200}[,;(][$\w]+(?:\.default)?\.createElement\(([$\w]+,null),\1\)/;
 
   const match = oldFile.match(pattern);
 

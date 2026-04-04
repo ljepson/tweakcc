@@ -5,35 +5,39 @@ import { showDiff } from './index';
 export const writeEngramConditional = (oldFile: string): string | null => {
   if (
     oldFile.includes('globalThis.__engramAvailable') &&
-    oldFile.includes('H==="tengu_passport_quail"||H==="tengu_moth_copse"')
+    oldFile.includes('"tengu_passport_quail"') &&
+    oldFile.includes('"tengu_moth_copse"')
   ) {
     return oldFile;
   }
 
   // Step 1: Find the feature gate helper and insert our conditional check
   // immediately after the function opening brace.
+  // The function name and internal identifiers change across minified versions,
+  // but the structure is stable: 2-param function that checks two override
+  // sources then falls back through a guard function.
   const pattern =
-    /function u\$\(([$\w]+),([$\w]+)\)\{let ([$\w]+)=\$ZH\(\);if\(\3&&\1 in \3\)return \3\[\1\];let ([$\w]+)=qZH\(\);if\(\4&&\1 in \4\)return \4\[\1\];if\(!tn\(\)\)return \2;/;
+    /function ([$\w]+)\(([$\w]+),([$\w]+)\)\{let ([$\w]+)=([$\w]+)\(\);if\(\4&&\2 in \4\)return \4\[\2\];let ([$\w]+)=([$\w]+)\(\);if\(\6&&\2 in \6\)return \6\[\2\];if\(!([$\w]+)\(\)\)return \3;/;
   const match = oldFile.match(pattern);
 
   if (!match || match.index === undefined) {
     console.error(
-      'patch: engramConditional: failed to find u$ function definition'
+      'patch: engramConditional: failed to find feature gate function definition'
     );
     return null;
   }
 
-  const uFnName = 'u$';
-  const gateNameVar = match[1];
-  const defaultValVar = match[2];
+  const fnName = match[1];
+  const gateNameVar = match[2];
+  const defaultValVar = match[3];
 
   // We want to insert our conditional check at the very beginning of the function
   const replacement =
-    `function ${uFnName}(${gateNameVar},${defaultValVar}){` +
+    `function ${fnName}(${gateNameVar},${defaultValVar}){` +
     `if(globalThis.__engramAvailable&&(${gateNameVar}==="tengu_passport_quail"||${gateNameVar}==="tengu_moth_copse"))return true;` +
     `if(globalThis.__engramAvailable===false&&(${gateNameVar}==="tengu_passport_quail"||${gateNameVar}==="tengu_moth_copse"))return false;` +
     match[0].slice(
-      `function ${uFnName}(${gateNameVar},${defaultValVar}){`.length
+      `function ${fnName}(${gateNameVar},${defaultValVar}){`.length
     );
 
   const startIndex = match.index;

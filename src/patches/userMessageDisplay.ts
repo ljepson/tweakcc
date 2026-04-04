@@ -123,10 +123,13 @@ export const writeUserMessageDisplay = (
   oldFile: string,
   config: UserMessageDisplayConfig
 ): string | null => {
-  const possibleVars = ['O', 'w', 'B', 'Q', '$', '_'];
-  for (const v of possibleVars) {
-    const rendered = `\`${config.format.replace(/\{\}/g, '${' + v + '}')}\``;
-    if (oldFile.includes(rendered)) {
+  // Idempotency: check if the format string's static parts are already present.
+  // Split on {} to get the literal portions, then check if they appear as a
+  // template literal in the file — regardless of which minified var was used.
+  const formatParts = config.format.split('{}');
+  if (formatParts.length >= 2) {
+    const sentinel = '`' + formatParts[0] + '${';
+    if (oldFile.includes(sentinel)) {
       return oldFile;
     }
   }

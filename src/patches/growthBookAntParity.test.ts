@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { writeGrowthBookAntParity } from './growthBookAntParity';
 
 const mockGrowthBook =
+  'function jlH(H){let $=!0,q=eZH.subscribe(()=>XFq(H));return()=>{$=!1,q()}}' +
+  'function GFq(){let H=Object.fromEntries(MI);let $=A$();b$((q)=>({...q,cachedGrowthBookFeatures:H}))}' +
+  'function YzH(){JlH(),eZH.emit()}' +
   'function IWH(){if(!FZ8)FZ8=!0;return SCq}' +
   'function OM4(H){let $=IWH();return $!==null&&H in $}' +
   'function bWH(){return}' +
@@ -23,8 +26,8 @@ describe('growthBookAntParity', () => {
     expect(result).toContain('A$().growthBookOverrides');
     expect(result).toContain('Object.keys(K).length>0');
     expect(result).toContain('return bWH()??A$().growthBookOverrides??{}');
-    expect(result).toContain('S$((_)=>({..._,growthBookOverrides');
-    expect(result).toContain('HZH.emit()');
+    expect(result).toContain('b$((_)=>({..._,growthBookOverrides');
+    expect(result).toContain('eZH.emit()');
   });
 
   it('should no-op when the GrowthBook parity patch is already present', () => {

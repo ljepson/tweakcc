@@ -19,7 +19,7 @@ export const writeReactiveCompact = (oldFile: string): string | null => {
   // Step 1: Find the null-assignment site (the main anchor)
   // -----------------------------------------------------------------------
   const sitePattern =
-    /function ([$\w]+)\(H\)\{for\(let \$=H\.length-1;\$>=0;\$--\)\{let q=H\[\$\];if\(q\.type==="user"&&!q\.isMeta&&!q\.toolUseResult&&!q\.isCompactSummary\)return \$}return 0\}var ([$\w]+)=null,([$\w]+)=null,([$\w]+)=3;/;
+    /function ([$\w]+)\(H\)\{for\(let ([$\w]+)=H\.length-1;\2>=0;\2--\)\{let q=H\[\2\];if\(q\.type==="user"&&!q\.isMeta&&!q\.toolUseResult&&!q\.isCompactSummary\)return \2}return 0\}var ([$\w]+)=null,([$\w]+)=null,([$\w]+)=3;/;
   const siteMatch = oldFile.match(sitePattern);
 
   if (!siteMatch || siteMatch.index === undefined) {
@@ -30,9 +30,9 @@ export const writeReactiveCompact = (oldFile: string): string | null => {
   }
 
   const lastUserMessageFn = siteMatch[1];
-  const reactiveCompactVar = siteMatch[2];
-  const skillPrefetchVar = siteMatch[3];
-  const maxOutputRecoveryVar = siteMatch[4];
+  const reactiveCompactVar = siteMatch[3];
+  const skillPrefetchVar = siteMatch[4];
+  const maxOutputRecoveryVar = siteMatch[5];
 
   // -----------------------------------------------------------------------
   // Step 2: Find the prompt-too-long checker function

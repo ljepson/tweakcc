@@ -213,6 +213,16 @@ const hasSentinel = (content: string, id: string): boolean =>
   content.includes(`/*twkcc:${id}:`);
 
 /**
+ * Return true if a sub-patch is already applied — either via the new sentinel
+ * or via a distinctive string from the old injection format (before sentinels).
+ */
+const isAlreadyApplied = (
+  content: string,
+  id: string,
+  legacyMarker: string
+): boolean => hasSentinel(content, id) || content.includes(legacyMarker);
+
+/**
  * Sub-patch 1: Add toolset field to app state initialization
  */
 export const writeToolsetFieldToAppState = (
@@ -276,8 +286,14 @@ export const writeToolFetchingUseMemo = (
   defaultToolset: string | null,
   ccVersion?: string
 ): string | null => {
-  // Idempotency: skip if already injected. To update toolsets config, restore and re-apply.
-  if (hasSentinel(oldFile, 'ts-agg')) {
+  // Idempotency: skip if already injected (new sentinel or old injection format).
+  if (
+    isAlreadyApplied(
+      oldFile,
+      'ts-agg',
+      'toolsets.hasOwnProperty(currentToolset)'
+    )
+  ) {
     return oldFile;
   }
 
@@ -355,7 +371,7 @@ export const writeToolsetComponentDefinition = (
   defaultToolset: string | null,
   ccVersion?: string
 ): string | null => {
-  if (hasSentinel(oldFile, 'ts-comp')) {
+  if (isAlreadyApplied(oldFile, 'ts-comp', 'const toolsetComp = ')) {
     return oldFile;
   }
 
@@ -569,7 +585,7 @@ export const insertShiftTabAppStateVar = (
   defaultToolset: string | null,
   ccVersion?: string
 ): string | null => {
-  if (hasSentinel(oldFile, 'ts-stln')) {
+  if (isAlreadyApplied(oldFile, 'ts-stln', 'let currentToolset=')) {
     return oldFile;
   }
 
@@ -612,7 +628,7 @@ export const appendToolsetToModeDisplay = (
   oldFile: string,
   ccVersion?: string
 ): string | null => {
-  if (hasSentinel(oldFile, 'ts-mode')) {
+  if (isAlreadyApplied(oldFile, 'ts-mode', '.toLowerCase(),currentToolset?')) {
     return oldFile;
   }
 
@@ -665,7 +681,7 @@ export const appendToolsetToShortcutsDisplay = (
   oldFile: string,
   ccVersion?: string
 ): string | null => {
-  if (hasSentinel(oldFile, 'ts-sc')) {
+  if (isAlreadyApplied(oldFile, 'ts-sc', '? for shortcuts [')) {
     return oldFile;
   }
 
@@ -711,7 +727,7 @@ export const writeSlashCommandDefinition = (
   oldFile: string,
   ccVersion?: string
 ): string | null => {
-  if (hasSentinel(oldFile, 'ts-slash')) {
+  if (isAlreadyApplied(oldFile, 'ts-slash', 'name: "toolset"')) {
     return oldFile;
   }
 
@@ -777,7 +793,7 @@ export const addCurrentToolsetAtToolChangeComponentScope = (
   defaultToolset: string | null,
   ccVersion?: string
 ): string | null => {
-  if (hasSentinel(oldFile, 'ts-scope')) {
+  if (isAlreadyApplied(oldFile, 'ts-scope', 'const currentToolset = ')) {
     return oldFile;
   }
 
@@ -847,7 +863,10 @@ export const writeModeChangeUpdateToolset = (
   defaultToolset: string,
   ccVersion?: string
 ): string | null => {
-  if (hasSentinel(oldFile, 'ts-mchg')) {
+  if (
+    hasSentinel(oldFile, 'ts-mchg') ||
+    oldFile.includes(`toolset:${JSON.stringify(planModeToolset)}`)
+  ) {
     return oldFile;
   }
 

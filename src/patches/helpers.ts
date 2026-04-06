@@ -306,7 +306,7 @@ export const findTextComponent = (fileContents: string): string | undefined => {
   const bodyMatch = fileContents.match(bodyPattern);
   if (bodyMatch) return bodyMatch[1];
 
-  console.log('patch: findTextComponent: failed to find text component');
+  console.error('patch: findTextComponent: failed to find text component');
   return undefined;
 };
 

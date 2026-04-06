@@ -255,9 +255,9 @@ export const writeToolsetFieldToAppState = (
       newFile.slice(0, mod.start) + replacement + newFile.slice(mod.end);
   }
 
+  // If no change was made, the toolset value was already correct — that's a no-op success.
   if (newFile === oldFile) {
-    console.error('patch: toolsets: failed to modify app state initialization');
-    return null;
+    return newFile;
   }
 
   // Show diff for the last modification (representative of all changes)

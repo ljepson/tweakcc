@@ -97,7 +97,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const gatePattern =
-    /async function [$\w]+\(([$\w]+),[$\w]+\)\{if\(\1\.toolUseContext\.agentId\)return;if\(![$\w]+\("tengu_passport_quail",!1\)\)return;(?:let [$\w]+=\1\.toolUseContext\.getAppState\(\)\.mcp\.clients;if\(![$\w]+\.some\(c=>c\.name==="engram"&&c\.type==="connected"\)\)return;)?if\(!([$\w]+)\(\)\)return;if\(([$\w]+)\(\)\)return;/;
+    /async function [$\w]+\(([$\w]+),[$\w]+\)\{if\(\1\.toolUseContext\.agentId\)return;if\(![$\w]+\("tengu_passport_quail",!1\)\)return;(?:if\(!\1\.toolUseContext\.getAppState\(\)\.mcp\.clients\.some\(c=>c\.name==="engram"&&c\.type==="connected"\)\)return;)?if\(!([$\w]+)\(\)\)return;if\(([$\w]+)\(\)\)return;/;
   const gateMatch = afterPromptFile.match(gatePattern);
 
   if (!hasEngramGate && (!gateMatch || gateMatch.index === undefined)) {
@@ -117,7 +117,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
     const oldTail = `if(!${autoMemFn}())return;if(${isRemoteFn}())return;`;
     const gateReplacement = gateNeedle.replace(
       oldTail,
-      `let w=${ctxParam}.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;${oldTail}`
+      `if(!${ctxParam}.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;${oldTail}`
     );
     finalFile =
       afterPromptFile.slice(0, gateIndex) +

@@ -42,7 +42,7 @@ describe('engramMemoryBridge', () => {
 
     expect(result).not.toBeNull();
     expect(result).toContain(
-      'let w=O.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;'
+      'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;'
     );
   });
 
@@ -58,7 +58,7 @@ describe('engramMemoryBridge', () => {
       )
       .replace(
         'if(!n4())return;if(A_())return;',
-        'let w=O.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!n4())return;if(A_())return;'
+        'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!n4())return;if(A_())return;'
       );
 
     expect(writeEngramMemoryBridge(alreadyPatched)).toBe(alreadyPatched);
@@ -77,7 +77,7 @@ describe('engramMemoryBridge', () => {
     );
     // Gate uses captured param name, not hardcoded O
     expect(result).toContain(
-      'let w=O.toolUseContext.getAppState().mcp.clients;if(!w.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!e4())return;if(L_())return;'
+      'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!e4())return;if(L_())return;'
     );
   });
 

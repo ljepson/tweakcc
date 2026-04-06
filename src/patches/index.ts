@@ -1036,7 +1036,8 @@ export const applyCustomization = async (
           c,
           config.settings.toolsets!,
           config.settings.defaultToolset,
-          config.settings.planModeToolset
+          config.settings.planModeToolset,
+          ccInstInfo.version
         ),
       condition: !!(
         config.settings.toolsets && config.settings.toolsets.length > 0

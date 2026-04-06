@@ -204,6 +204,14 @@ export const findTopLevelPositionBeforeSlashCommand = (
 // SUB-PATCH IMPLEMENTATIONS
 // ============================================================================
 
+/** Embed a version-tagged sentinel comment into injected code. */
+const mkSentinel = (id: string, ccVersion?: string): string =>
+  `/*twkcc:${id}:${ccVersion ?? 'unknown'}*/`;
+
+/** Return true if any sentinel with this id is present (any version). */
+const hasSentinel = (content: string, id: string): boolean =>
+  content.includes(`/*twkcc:${id}:`);
+
 /**
  * Sub-patch 1: Add toolset field to app state initialization
  */
@@ -211,8 +219,15 @@ export const writeToolsetFieldToAppState = (
   oldFile: string,
   defaultToolset: string | null
 ): string | null => {
-  // Find all occurrences of thinkingEnabled:SOMETHING()
-  const thinkingEnabledPattern = /thinkingEnabled:([$\w]+)\(\)/g;
+  const toolsetValue = defaultToolset
+    ? JSON.stringify(defaultToolset)
+    : 'undefined';
+  const textToInsert = `,toolset:${toolsetValue}`;
+
+  // Update-aware pattern: consume any existing toolset field so re-runs update the value.
+  // This handles both first-apply (no existing toolset) and config-change re-apply.
+  const thinkingEnabledPattern =
+    /thinkingEnabled:([$\w]+)\(\)(?:,toolset:[^,}]+)?/g;
   const matches = Array.from(oldFile.matchAll(thinkingEnabledPattern));
 
   if (matches.length === 0) {
@@ -220,27 +235,24 @@ export const writeToolsetFieldToAppState = (
     return null;
   }
 
-  // Collect all end indices
-  const modifications: { index: number }[] = [];
+  // Collect replacement ranges in descending order to avoid index shifts
+  const modifications: { start: number; end: number; fnName: string }[] = [];
   for (const match of matches) {
     if (match.index !== undefined) {
-      const endIndex = match.index + match[0].length;
-      modifications.push({ index: endIndex });
+      modifications.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        fnName: match[1],
+      });
     }
   }
+  modifications.sort((a, b) => b.start - a.start);
 
-  // Sort in descending order to avoid index shifts
-  modifications.sort((a, b) => b.index - a.index);
-
-  // Apply modifications
   let newFile = oldFile;
-  const toolsetValue = defaultToolset
-    ? JSON.stringify(defaultToolset)
-    : 'undefined';
-  const textToInsert = `,toolset:${toolsetValue}`;
   for (const mod of modifications) {
+    const replacement = `thinkingEnabled:${mod.fnName}()${textToInsert}`;
     newFile =
-      newFile.slice(0, mod.index) + textToInsert + newFile.slice(mod.index);
+      newFile.slice(0, mod.start) + replacement + newFile.slice(mod.end);
   }
 
   if (newFile === oldFile) {
@@ -250,7 +262,7 @@ export const writeToolsetFieldToAppState = (
 
   // Show diff for the last modification (representative of all changes)
   const lastMod = modifications[modifications.length - 1];
-  showDiff(oldFile, newFile, textToInsert, lastMod.index, lastMod.index);
+  showDiff(oldFile, newFile, textToInsert, lastMod.start, lastMod.end);
 
   return newFile;
 };
@@ -261,8 +273,14 @@ export const writeToolsetFieldToAppState = (
 export const writeToolFetchingUseMemo = (
   oldFile: string,
   toolsets: Toolset[],
-  defaultToolset: string | null
+  defaultToolset: string | null,
+  ccVersion?: string
 ): string | null => {
+  // Idempotency: skip if already injected. To update toolsets config, restore and re-apply.
+  if (hasSentinel(oldFile, 'ts-agg')) {
+    return oldFile;
+  }
+
   const stateInfo = getAppStateSelectorAndUseState(oldFile);
   if (!stateInfo) {
     console.error(
@@ -303,7 +321,7 @@ export const writeToolFetchingUseMemo = (
     : 'undefined';
 
   // Generate the replacement code
-  const replacement = `let currentToolset = ${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};
+  const replacement = `${mkSentinel('ts-agg', ccVersion)}let currentToolset = ${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};
 let ${toolAggregationVar} = undefined;
 const toolsets = ${toolsetsJSON};
 if (toolsets.hasOwnProperty(currentToolset)) {
@@ -334,8 +352,13 @@ if (toolsets.hasOwnProperty(currentToolset)) {
 export const writeToolsetComponentDefinition = (
   oldFile: string,
   toolsets: Toolset[],
-  defaultToolset: string | null
+  defaultToolset: string | null,
+  ccVersion?: string
 ): string | null => {
+  if (hasSentinel(oldFile, 'ts-comp')) {
+    return oldFile;
+  }
+
   const insertionPoint = findTopLevelPositionBeforeSlashCommand(oldFile);
   if (insertionPoint === null) {
     console.error(
@@ -411,7 +434,7 @@ export const writeToolsetComponentDefinition = (
     ? `${reactVar}.createElement(${dividerComponent}, { dividerColor: "permission" }),`
     : '';
 
-  const componentCode = `const toolsetComp = ({ onExit, input }) => {
+  const componentCode = `${mkSentinel('ts-comp', ccVersion)}const toolsetComp = ({ onExit, input }) => {
   const currentToolset = ${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};
 
   const setState = ${appStateSetState}();
@@ -543,8 +566,13 @@ export const findShiftTabAppStateVarInsertionPoint = (
  */
 export const insertShiftTabAppStateVar = (
   oldFile: string,
-  defaultToolset: string | null
+  defaultToolset: string | null,
+  ccVersion?: string
 ): string | null => {
+  if (hasSentinel(oldFile, 'ts-stln')) {
+    return oldFile;
+  }
+
   const insertionPoint = findShiftTabAppStateVarInsertionPoint(oldFile);
   if (insertionPoint === null) {
     console.error(
@@ -565,7 +593,7 @@ export const insertShiftTabAppStateVar = (
   const fallback = defaultToolset
     ? JSON.stringify(defaultToolset)
     : 'undefined';
-  const codeToInsert = `let currentToolset=${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};`;
+  const codeToInsert = `${mkSentinel('ts-stln', ccVersion)}let currentToolset=${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};`;
 
   const newFile =
     oldFile.slice(0, insertionPoint) +
@@ -580,7 +608,14 @@ export const insertShiftTabAppStateVar = (
 /**
  * Append the toolset name to the mode display text
  */
-export const appendToolsetToModeDisplay = (oldFile: string): string | null => {
+export const appendToolsetToModeDisplay = (
+  oldFile: string,
+  ccVersion?: string
+): string | null => {
+  if (hasSentinel(oldFile, 'ts-mode')) {
+    return oldFile;
+  }
+
   // Find the pattern where mode text is rendered
   // Looking for: tl(Y).toLowerCase(), " on"
   // We want to change it to: tl(Y).toLowerCase(), " on: ", currentToolset || "undefined"
@@ -601,7 +636,7 @@ export const appendToolsetToModeDisplay = (oldFile: string): string | null => {
   // Replace with the new pattern that includes toolset
   const oldText = match[0];
   // insertShiftTabAppStateVar provides the definition for currentToolset.
-  const newText = `${tlFunction}(${modeVar}).toLowerCase(),currentToolset?\` on [\${currentToolset}]\`:""`;
+  const newText = `${mkSentinel('ts-mode', ccVersion)}${tlFunction}(${modeVar}).toLowerCase(),currentToolset?\` on [\${currentToolset}]\`:""`;
 
   const newFile = oldFile.replace(oldText, newText);
 
@@ -627,8 +662,13 @@ export const appendToolsetToModeDisplay = (oldFile: string): string | null => {
  * Append the toolset name to the "? for shortcuts" display
  */
 export const appendToolsetToShortcutsDisplay = (
-  oldFile: string
+  oldFile: string,
+  ccVersion?: string
 ): string | null => {
+  if (hasSentinel(oldFile, 'ts-sc')) {
+    return oldFile;
+  }
+
   const shortcutsPattern = /"\? for shortcuts"/g;
   const matches = Array.from(oldFile.matchAll(shortcutsPattern));
 
@@ -643,7 +683,7 @@ export const appendToolsetToShortcutsDisplay = (
 
   // Replace with the new pattern that includes toolset
   const oldText = match[0];
-  const newText = `currentToolset?\`? for shortcuts [\${currentToolset}]\`:"? for shortcuts"`;
+  const newText = `${mkSentinel('ts-sc', ccVersion)}currentToolset?\`? for shortcuts [\${currentToolset}]\`:"? for shortcuts"`;
 
   const newFile = oldFile.replace(oldText, newText);
   if (newFile === oldFile) {
@@ -667,7 +707,14 @@ export const appendToolsetToShortcutsDisplay = (
 /**
  * Sub-patch 4: Add the slash command definition
  */
-export const writeSlashCommandDefinition = (oldFile: string): string | null => {
+export const writeSlashCommandDefinition = (
+  oldFile: string,
+  ccVersion?: string
+): string | null => {
+  if (hasSentinel(oldFile, 'ts-slash')) {
+    return oldFile;
+  }
+
   const reactVar = getReactVar(oldFile);
   if (!reactVar) {
     console.error('patch: toolsets: failed to find React variable');
@@ -675,7 +722,7 @@ export const writeSlashCommandDefinition = (oldFile: string): string | null => {
   }
 
   // Generate the slash command definition
-  const commandDef = `, {
+  const commandDef = `${mkSentinel('ts-slash', ccVersion)}, {
   aliases: ["change-tools"],
   type: "local-jsx",
   name: "toolset",
@@ -727,8 +774,13 @@ export const findToolChangeComponentScope = (
  */
 export const addCurrentToolsetAtToolChangeComponentScope = (
   oldFile: string,
-  defaultToolset: string | null
+  defaultToolset: string | null,
+  ccVersion?: string
 ): string | null => {
+  if (hasSentinel(oldFile, 'ts-scope')) {
+    return oldFile;
+  }
+
   const scopeIndex = findToolChangeComponentScope(oldFile);
   if (scopeIndex === null) {
     return null;
@@ -748,7 +800,7 @@ export const addCurrentToolsetAtToolChangeComponentScope = (
     : 'undefined';
 
   // Inject the currentToolset access right at the start of the component scope
-  const injectionCode = `const currentToolset = ${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};`;
+  const injectionCode = `${mkSentinel('ts-scope', ccVersion)}const currentToolset = ${appStateUseSelectorFn}(state => state.toolset) ?? ${fallback};`;
 
   const newFile =
     oldFile.slice(0, scopeIndex) + injectionCode + oldFile.slice(scopeIndex);
@@ -792,8 +844,13 @@ export const findModeChange = (
 export const writeModeChangeUpdateToolset = (
   oldFile: string,
   planModeToolset: string,
-  defaultToolset: string
+  defaultToolset: string,
+  ccVersion?: string
 ): string | null => {
+  if (hasSentinel(oldFile, 'ts-mchg')) {
+    return oldFile;
+  }
+
   const modeChangeResult = findModeChange(oldFile);
   if (!modeChangeResult) {
     return null;
@@ -802,7 +859,7 @@ export const writeModeChangeUpdateToolset = (
   const { index: modeChangeIndex, modeVar, setStateVar } = modeChangeResult;
 
   // Build the injection code using setState directly
-  const injectionCode = `if(${modeVar}==="plan"){${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(planModeToolset)}}));}else{${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(defaultToolset)}}));}`;
+  const injectionCode = `${mkSentinel('ts-mchg', ccVersion)}if(${modeVar}==="plan"){${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(planModeToolset)}}));}else{${setStateVar}((prev)=>({...prev,toolset:${JSON.stringify(defaultToolset)}}));}`;
 
   // Inject right before the mode change
   const newFile =
@@ -825,12 +882,14 @@ export const writeModeChangeUpdateToolset = (
  * @param toolsets - Array of toolset configurations
  * @param defaultToolset - The default toolset name (or null)
  * @param planModeToolset - Optional toolset to switch to when entering plan mode
+ * @param ccVersion - Claude Code version string, embedded in idempotency sentinels
  */
 export const writeToolsets = (
   oldFile: string,
   toolsets: Toolset[],
   defaultToolset: string | null,
-  planModeToolset?: string | null
+  planModeToolset?: string | null,
+  ccVersion?: string
 ): string | null => {
   // Return if no toolsets are configured
   if (!toolsets || toolsets.length === 0) {
@@ -849,14 +908,24 @@ export const writeToolsets = (
   }
 
   // Step 2: Modify tool fetching useMemo
-  result = writeToolFetchingUseMemo(result, toolsets, defaultToolset);
+  result = writeToolFetchingUseMemo(
+    result,
+    toolsets,
+    defaultToolset,
+    ccVersion
+  );
   if (!result) {
     console.error('patch: toolsets: step 2 failed (writeToolFetchingUseMemo)');
     return null;
   }
 
   // Step 3: Add toolset component definition
-  result = writeToolsetComponentDefinition(result, toolsets, defaultToolset);
+  result = writeToolsetComponentDefinition(
+    result,
+    toolsets,
+    defaultToolset,
+    ccVersion
+  );
   if (!result) {
     console.error(
       'patch: toolsets: step 3 failed (writeToolsetComponentDefinition)'
@@ -865,7 +934,7 @@ export const writeToolsets = (
   }
 
   // Step 4: Add slash command definition
-  result = writeSlashCommandDefinition(result);
+  result = writeSlashCommandDefinition(result, ccVersion);
   if (!result) {
     console.error(
       'patch: toolsets: step 4 failed (writeSlashCommandDefinition)'
@@ -874,14 +943,14 @@ export const writeToolsets = (
   }
 
   // Step 5: Insert state getter in statusline component
-  result = insertShiftTabAppStateVar(result, defaultToolset);
+  result = insertShiftTabAppStateVar(result, defaultToolset, ccVersion);
   if (!result) {
     console.error('patch: toolsets: step 5 failed (insertShiftTabAppStateVar)');
     return null;
   }
 
   // Step 6: Append toolset name to mode display
-  result = appendToolsetToModeDisplay(result);
+  result = appendToolsetToModeDisplay(result, ccVersion);
   if (!result) {
     console.error(
       'patch: toolsets: step 6 failed (appendToolsetToModeDisplay)'
@@ -890,7 +959,7 @@ export const writeToolsets = (
   }
 
   // Step 7: Append toolset name to shortcuts display
-  result = appendToolsetToShortcutsDisplay(result);
+  result = appendToolsetToShortcutsDisplay(result, ccVersion);
   if (!result) {
     console.error(
       'patch: toolsets: step 7 failed (appendToolsetToShortcutsDisplay)'
@@ -903,7 +972,8 @@ export const writeToolsets = (
     // First, add setState access at the tool change component scope
     result = addCurrentToolsetAtToolChangeComponentScope(
       result,
-      defaultToolset
+      defaultToolset,
+      ccVersion
     );
     if (!result) {
       console.error(
@@ -916,7 +986,8 @@ export const writeToolsets = (
     result = writeModeChangeUpdateToolset(
       result,
       planModeToolset,
-      defaultToolset
+      defaultToolset,
+      ccVersion
     );
     if (!result) {
       console.error(

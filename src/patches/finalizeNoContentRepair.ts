@@ -6,10 +6,7 @@ export const writeFinalizeNoContentRepair = (
   const needle = 'n$({content:vN,isMeta:!0})';
 
   if (!oldFile.includes(needle)) {
-    console.error(
-      'patch: finalizeNoContentRepair: failed to find synthetic no-content repair'
-    );
-    return null;
+    return oldFile;
   }
 
   const replacement = 'n$({content:"",isMeta:!0})';

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { writeFinalizeNoContentRepair } from './finalizeNoContentRepair';
 
 describe('finalizeNoContentRepair', () => {
@@ -14,11 +14,9 @@ describe('finalizeNoContentRepair', () => {
     );
   });
 
-  it('returns null when the repair branch is absent', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+  it('returns unchanged when the repair branch is absent', () => {
+    const oldFile = 'function nope(){}';
 
-    expect(writeFinalizeNoContentRepair('function nope(){}')).toBeNull();
-
-    vi.restoreAllMocks();
+    expect(writeFinalizeNoContentRepair(oldFile)).toBe(oldFile);
   });
 });

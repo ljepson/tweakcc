@@ -73,6 +73,7 @@ import { writeSuppressNativeInstallerWarning } from './suppressNativeInstallerWa
 import { writeSkipTrustDialog } from './skipTrustDialog';
 import { writeScrollEscapeSequenceFilter } from './scrollEscapeSequenceFilter';
 import { writeFilterEmptyBridgeMessages } from './filterEmptyBridgeMessages';
+import { writeSuppressNoContentPlaceholders } from './suppressNoContentPlaceholders';
 import { writeWorktreeMode } from './worktreeMode';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
 import { writeVoiceMode } from './voiceMode';
@@ -196,6 +197,13 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.ALWAYS_APPLIED,
     description:
       'Drop blank inbound bridge messages before they can render as "(no content)"',
+  },
+  {
+    id: 'suppress-no-content-placeholders',
+    name: 'Suppress no-content placeholders',
+    group: PatchGroup.ALWAYS_APPLIED,
+    description:
+      'Stop synthetic empty messages from turning into literal "(no content)" artifacts',
   },
   // Misc Configurable
   {
@@ -822,6 +830,9 @@ export const applyCustomization = async (
     },
     'filter-empty-bridge-messages': {
       fn: c => writeFilterEmptyBridgeMessages(c),
+    },
+    'suppress-no-content-placeholders': {
+      fn: c => writeSuppressNoContentPlaceholders(c),
     },
     // Misc Configurable
     'patches-applied-indication': {

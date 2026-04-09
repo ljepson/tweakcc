@@ -72,6 +72,7 @@ import { writeAllowBypassPermsInSudo } from './allowBypassPermsInSudo';
 import { writeSuppressNativeInstallerWarning } from './suppressNativeInstallerWarning';
 import { writeSkipTrustDialog } from './skipTrustDialog';
 import { writeScrollEscapeSequenceFilter } from './scrollEscapeSequenceFilter';
+import { writeFilterEmptyBridgeMessages } from './filterEmptyBridgeMessages';
 import { writeWorktreeMode } from './worktreeMode';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
 import { writeVoiceMode } from './voiceMode';
@@ -188,6 +189,13 @@ const PATCH_DEFINITIONS = [
     name: `Statusline update throttling correction`,
     group: PatchGroup.ALWAYS_APPLIED,
     description: `Statusline updates will be properly throttled instead of queued (or debounced)`,
+  },
+  {
+    id: 'filter-empty-bridge-messages',
+    name: 'Filter empty bridge messages',
+    group: PatchGroup.ALWAYS_APPLIED,
+    description:
+      'Drop blank inbound bridge messages before they can render as "(no content)"',
   },
   // Misc Configurable
   {
@@ -811,6 +819,9 @@ export const applyCustomization = async (
           config.settings.misc?.statuslineUseFixedInterval ?? false
         ),
       condition: config.settings.misc?.statuslineThrottleMs != null,
+    },
+    'filter-empty-bridge-messages': {
+      fn: c => writeFilterEmptyBridgeMessages(c),
     },
     // Misc Configurable
     'patches-applied-indication': {

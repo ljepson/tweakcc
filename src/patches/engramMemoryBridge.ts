@@ -16,7 +16,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const permissionPattern =
-    /(if\(\(([$\w]+)\.name===[$\w]+\|\|\2\.name===[$\w]+\)&&"file_path"\s*in q\)\{let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\2,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
+    /(if\(\(([$\w]+)\.name===[$\w]+\|\|\2\.name===[$\w]+\)&&"file_path"\s*in q\)\{(?:if\(\2\.name===[$\w]+&&[$\w]+\(\)\)return [$\w]+\(\2,`[^`]+`\);)?let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\2,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
   const permissionMatch = oldFile.match(permissionPattern);
 
   if (
@@ -61,7 +61,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const promptPattern =
-    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \(ls\/find\/cat\/stat\/wc\/head\/tail and similar\), and \$\{[$\w]+\}\/\$\{[$\w]+\} for paths inside the memory directory only\. \$\{[$\w]+\} rm is not permitted\.[^`]*?All other tools \\u2014 [^`]*?Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
+    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \(ls\/find\/cat\/stat\/wc\/head\/tail and similar\),[^`]*?All other tools \\u2014 [^`]*?Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
   const promptMatch = afterPermissionFile.match(promptPattern);
   const promptIndex = promptMatch ? promptMatch.index : -1;
 
@@ -75,12 +75,19 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   let afterPromptFile = afterPermissionFile;
   const promptNeedle = promptMatch?.[0];
   if (!hasEngramPrompt && promptNeedle) {
-    const promptReplacement = promptNeedle
-      .replace(
-        'rm is not permitted.',
-        'rm is not permitted. mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
-      )
-      .replace('MCP, Agent', 'other MCP tools, Agent');
+    let promptReplacement = promptNeedle.replace(
+      'All other tools \\u2014 MCP, Agent',
+      'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages. All other tools \\u2014 other MCP tools, Agent'
+    );
+
+    if (promptReplacement === promptNeedle) {
+      promptReplacement = promptNeedle
+        .replace(
+          'rm is not permitted.',
+          'rm is not permitted. mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
+        )
+        .replace('MCP, Agent', 'other MCP tools, Agent');
+    }
 
     afterPromptFile =
       afterPermissionFile.slice(0, promptIndex!) +

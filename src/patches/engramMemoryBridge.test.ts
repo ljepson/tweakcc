@@ -13,6 +13,11 @@ const mockAutoMemSnippet_2_1_92 =
   'return[`You are now acting as the memory extraction subagent. Analyze the most recent ~${H} messages above and use them to update your persistent memory systems.`,"",`Available tools: ${Bq}, ${M9}, ${G1}, read-only ${_q} (ls/find/cat/stat/wc/head/tail and similar), and ${yK}/${g7} for paths inside the memory directory only. ${_q} rm is not permitted. All other tools \\u2014 MCP, Agent, write-capable ${_q}, etc \\u2014 will be denied.`,""].join(`' +
   'async function z(O,Y){if(O.toolUseContext.agentId)return;if(!C$("tengu_passport_quail",!1))return;if(!e4())return;if(L_())return;if(K){}}';
 
+const mockAutoMemSnippet_2_1_94 =
+  'function gl$(H){return async($,q)=>{if(kB())return pl$($,"Memory is toggled off. Run /toggle-memory to re-enable automemory.");if($.name===OD)return{behavior:"allow",updatedInput:q};if($.name===gq||$.name===S4||$.name===$f)return{behavior:"allow",updatedInput:q};if($.name===t6){let K=$.inputSchema.safeParse(q);if(K.success){if($.isReadOnly(K.data))return{behavior:"allow",updatedInput:q};let _=K.data.command;if(typeof _==="string"&&await bs9(_))return{behavior:"allow",updatedInput:q}}return pl$($,`Only read-only shell commands and rm with all paths inside ${H} are permitted in this context (ls, find, grep, cat, stat, wc, head, tail, and similar)`)}if(($.name===ZK||$.name===B7)&&"file_path"in q){if($.name===ZK&&Bv())return pl$($,`${ZK} is not permitted in tiny memory mode \\u2014 memories are immutable, so delete via Bash rm and rewrite via ${B7}.`);let K=q.file_path;if(typeof K==="string"&&Nh(K))return{behavior:"allow",updatedInput:q}}return pl$($,`only ${gq}, ${S4}, ${$f}, read-only ${t6}, and ${ZK}/${B7} within ${H} are allowed`)}}' +
+  'function S57(H,W,K){let A=q?"scope guidance, ":"",z=K?`Available tools: ${gq}, ${S4}, ${$f}, read-only ${t6} (ls/find/cat/stat/wc/head/tail and similar), ${B7} for paths inside the memory directory only, and ${t6} rm with paths inside the memory directory only. ${ZK} is not permitted \\u2014 memories are immutable, so delete-and-recreate replaces in-place edits. All other tools \\u2014 MCP, Agent, write-capable ${t6}, etc \\u2014 will be denied.`:`Available tools: ${gq}, ${S4}, ${$f}, read-only ${t6} (ls/find/cat/stat/wc/head/tail and similar), and ${ZK}/${B7} for paths inside the memory directory only, and ${t6} rm with paths inside the memory directory only. All other tools \\u2014 MCP, Agent, write-capable ${t6}, etc \\u2014 will be denied.`;return[`You are now acting as the memory extraction subagent. Analyze the most recent ~${H} messages above and use them to update your persistent memory systems.`,"",z,""].join(`}' +
+  'async function z(O,Y){if(O.toolUseContext.agentId)return;if(!I$("tengu_passport_quail",!1))return;if(!K9())return;if(q_())return;if(K){}}';
+
 const mockAutoMemSnippet = mockAutoMemSnippet_2_1_89;
 
 describe('engramMemoryBridge', () => {
@@ -78,6 +83,21 @@ describe('engramMemoryBridge', () => {
     // Gate uses captured param name, not hardcoded O
     expect(result).toContain(
       'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!e4())return;if(L_())return;'
+    );
+  });
+
+  it('patches 2.1.94 tiny-memory matcher variants correctly', () => {
+    const result = writeEngramMemoryBridge(mockAutoMemSnippet_2_1_94);
+
+    expect(result).not.toBeNull();
+    expect(result).toContain('$.name==="mcp__engram__engram_store"');
+    expect(result).toContain('Only structured Engram saves are allowed');
+    expect(result).toContain('and mcp__engram__engram_store are allowed');
+    expect(result).toContain(
+      'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
+    );
+    expect(result).toContain(
+      'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!K9())return;if(q_())return;'
     );
   });
 

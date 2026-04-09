@@ -74,6 +74,7 @@ import { writeSkipTrustDialog } from './skipTrustDialog';
 import { writeScrollEscapeSequenceFilter } from './scrollEscapeSequenceFilter';
 import { writeFilterEmptyBridgeMessages } from './filterEmptyBridgeMessages';
 import { writeSuppressNoContentPlaceholders } from './suppressNoContentPlaceholders';
+import { writeFinalizeNoContentRepair } from './finalizeNoContentRepair';
 import { writeWorktreeMode } from './worktreeMode';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
 import { writeVoiceMode } from './voiceMode';
@@ -467,6 +468,13 @@ const PATCH_DEFINITIONS = [
     description:
       'Autonomous background loop with focus-based pacing and cost tracking',
     supportedVersions: ['2.1.89'],
+  },
+  {
+    id: 'finalize-no-content-repair',
+    name: 'Finalize no-content repair',
+    group: PatchGroup.ALWAYS_APPLIED,
+    description:
+      'Remove the last synthetic meta-message fallback that still hardcodes "(no content)"',
   },
   {
     id: 'allow-custom-agent-models',
@@ -1100,6 +1108,9 @@ export const applyCustomization = async (
           ccInstInfo.version &&
           compareVersions(ccInstInfo.version, '2.0.64') < 0
         ),
+    },
+    'finalize-no-content-repair': {
+      fn: c => writeFinalizeNoContentRepair(c),
     },
     'voice-mode': {
       fn: c =>

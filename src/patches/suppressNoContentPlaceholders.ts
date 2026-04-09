@@ -70,5 +70,22 @@ export const writeSuppressNoContentPlaceholders = (
     nextFile = afterAssistantFile;
   }
 
+  const toolRepairNeedle = 'n$({content:vN,isMeta:!0})';
+  if (nextFile.includes(toolRepairNeedle)) {
+    const afterToolRepairFile = nextFile.replaceAll(
+      toolRepairNeedle,
+      'n$({content:"",isMeta:!0})'
+    );
+
+    showDiff(
+      nextFile,
+      afterToolRepairFile,
+      'n$({content:"",isMeta:!0})',
+      nextFile.indexOf(toolRepairNeedle),
+      nextFile.indexOf(toolRepairNeedle) + toolRepairNeedle.length
+    );
+    nextFile = afterToolRepairFile;
+  }
+
   return nextFile;
 };

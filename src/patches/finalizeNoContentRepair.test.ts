@@ -10,7 +10,7 @@ describe('finalizeNoContentRepair', () => {
 
     expect(result).not.toBeNull();
     expect(result).toBe(
-      'function ZO7(H){return n$({content:"",isMeta:!0}) + n$({content:"",isMeta:!0})}'
+      'function ZO7(H){return n$({content:"[Synthetic empty meta message]",isMeta:!0}) + n$({content:"[Synthetic empty meta message]",isMeta:!0})}'
     );
   });
 
@@ -18,5 +18,13 @@ describe('finalizeNoContentRepair', () => {
     const oldFile = 'function nope(){}';
 
     expect(writeFinalizeNoContentRepair(oldFile)).toBe(oldFile);
+  });
+
+  it('upgrades the older empty synthetic meta repair to the neutral sentinel', () => {
+    const oldFile = 'function ZO7(H){return n$({content:"",isMeta:!0})}';
+
+    expect(writeFinalizeNoContentRepair(oldFile)).toBe(
+      'function ZO7(H){return n$({content:"[Synthetic empty meta message]",isMeta:!0})}'
+    );
   });
 });

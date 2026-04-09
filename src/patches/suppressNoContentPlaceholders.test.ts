@@ -22,12 +22,29 @@ describe('suppressNoContentPlaceholders', () => {
     expect(result).not.toContain('text:vN');
   });
 
-  it('replaces synthetic meta no-content repair with empty meta content', () => {
+  it('replaces synthetic meta no-content repair with a neutral sentinel', () => {
     const result = writeSuppressNoContentPlaceholders(mockNoContentSnippet);
 
     expect(result).not.toBeNull();
-    expect(result).toContain('n$({content:"",isMeta:!0})');
+    expect(result).toContain(
+      'n$({content:"[Synthetic empty meta message]",isMeta:!0})'
+    );
     expect(result).not.toContain('n$({content:vN,isMeta:!0})');
+  });
+
+  it('upgrades the older empty synthetic meta repair to the neutral sentinel', () => {
+    const result = writeSuppressNoContentPlaceholders(
+      mockNoContentSnippet.replace(
+        'n$({content:vN,isMeta:!0})',
+        'n$({content:"",isMeta:!0})'
+      )
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain(
+      'n$({content:"[Synthetic empty meta message]",isMeta:!0})'
+    );
+    expect(result).not.toContain('n$({content:"",isMeta:!0})');
   });
 
   it('returns null when the expected constructor is absent', () => {

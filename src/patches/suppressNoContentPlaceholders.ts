@@ -1,5 +1,10 @@
 import { showDiff } from './index';
 
+const SYNTHETIC_META_SENTINEL = '[Synthetic empty meta message]';
+const EMPTY_TOOL_REPAIR_NEEDLE = 'n$({content:"",isMeta:!0})';
+const NO_CONTENT_TOOL_REPAIR_NEEDLE = 'n$({content:vN,isMeta:!0})';
+const SYNTHETIC_META_REPLACEMENT = `n$({content:"${SYNTHETIC_META_SENTINEL}",isMeta:!0})`;
+
 export const writeSuppressNoContentPlaceholders = (
   oldFile: string
 ): string | null => {
@@ -70,19 +75,24 @@ export const writeSuppressNoContentPlaceholders = (
     nextFile = afterAssistantFile;
   }
 
-  const toolRepairNeedle = 'n$({content:vN,isMeta:!0})';
-  if (nextFile.includes(toolRepairNeedle)) {
-    const afterToolRepairFile = nextFile.replaceAll(
-      toolRepairNeedle,
-      'n$({content:"",isMeta:!0})'
-    );
+  const toolRepairNeedsRewrite =
+    nextFile.includes(NO_CONTENT_TOOL_REPAIR_NEEDLE) ||
+    nextFile.includes(EMPTY_TOOL_REPAIR_NEEDLE);
+  if (toolRepairNeedsRewrite) {
+    const toolRepairIndex = [
+      nextFile.indexOf(NO_CONTENT_TOOL_REPAIR_NEEDLE),
+      nextFile.indexOf(EMPTY_TOOL_REPAIR_NEEDLE),
+    ].find(index => index !== -1)!;
+    const afterToolRepairFile = nextFile
+      .replaceAll(NO_CONTENT_TOOL_REPAIR_NEEDLE, SYNTHETIC_META_REPLACEMENT)
+      .replaceAll(EMPTY_TOOL_REPAIR_NEEDLE, SYNTHETIC_META_REPLACEMENT);
 
     showDiff(
       nextFile,
       afterToolRepairFile,
-      'n$({content:"",isMeta:!0})',
-      nextFile.indexOf(toolRepairNeedle),
-      nextFile.indexOf(toolRepairNeedle) + toolRepairNeedle.length
+      SYNTHETIC_META_REPLACEMENT,
+      toolRepairIndex,
+      toolRepairIndex + NO_CONTENT_TOOL_REPAIR_NEEDLE.length
     );
     nextFile = afterToolRepairFile;
   }

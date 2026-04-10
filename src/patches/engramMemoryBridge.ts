@@ -16,7 +16,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const permissionPattern =
-    /(if\(\(([$\w]+)\.name===[$\w]+\|\|\2\.name===[$\w]+\)&&"file_path"\s*in q\)\{(?:if\(\2\.name===[$\w]+&&[$\w]+\(\)\)return [$\w]+\(\2,`[^`]+`\);)?let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\2,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
+    /(if\(\(([$\w]+)\.name===[$\w]+\|\|\2\.name===[$\w]+\)&&"file_path"\s*in ([$\w]+)\)\{(?:if\(\2\.name===[$\w]+&&[$\w]+\(\)\)return [$\w]+\(\2,`[^`]+`\);)?let [$\w]+=\3\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:\3\}\})(return [$\w]+\(\2,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
   const permissionMatch = oldFile.match(permissionPattern);
   const permissionPattern2 =
     /(if\(\(([$\w]+)\.name===[$\w]+\|\|\2\.name===[$\w]+\)&&"file_path"in q\)\{(?:if\(\2\.name===[$\w]+&&[$\w]+\(\)\)return [$\w]+\(\2,`[^`]+`\);)?let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(let [$\w]+=[$\w]+\(\)\?[$\w]+:[$\w]+;return [$\w]+\(\2,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
@@ -40,10 +40,11 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
       permissionMatch2) as RegExpMatchArray & {
       index: number;
     };
-    const [permissionNeedle, allowWrites, toolVar, denyTail] = permissionGroups;
+    const [permissionNeedle, allowWrites, toolVar, inputVar, denyTail] =
+      permissionGroups;
     const permissionIndex = permissionGroups.index;
     const modifiedLastPart =
-      `if(${toolVar}.name==="mcp__engram__engram_store"&&typeof q==="object"&&q!==null){let t=q.entry_type,p=q.project_name,l=q.title,c=q.content;if((t==="decision"||t==="discovery"||t==="lesson"||t==="diagnostic")&&typeof p==="string"&&typeof l==="string"&&typeof c==="string")return{behavior:"allow",updatedInput:q};return {behavior:"deny",message:"Only structured Engram saves are allowed",decisionReason:{type:"other",reason:"Only structured Engram saves are allowed"}}}` +
+      `if(${toolVar}.name==="mcp__engram__engram_store"&&typeof ${inputVar}==="object"&&${inputVar}!==null){let t=${inputVar}.entry_type,p=${inputVar}.project_name,l=${inputVar}.title,c=${inputVar}.content;if((t==="decision"||t==="discovery"||t==="lesson"||t==="diagnostic")&&typeof p==="string"&&typeof l==="string"&&typeof c==="string")return{behavior:"allow",updatedInput:${inputVar}};return {behavior:"deny",message:"Only structured Engram saves are allowed",decisionReason:{type:"other",reason:"Only structured Engram saves are allowed"}}}` +
       denyTail.replace(
         'are allowed`',
         'and mcp__engram__engram_store are allowed`'

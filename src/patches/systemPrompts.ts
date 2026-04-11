@@ -122,6 +122,18 @@ export const applySystemPrompts = async (
       continue;
     }
 
+    if (promptId.startsWith('discovered-')) {
+      results.push({
+        id: promptId,
+        name: prompt.name,
+        group: PatchGroup.SYSTEM_PROMPTS,
+        applied: false,
+        skipped: true,
+        details: 'discovered prompt requires structured recovery before apply',
+      });
+      continue;
+    }
+
     debug(`Applying system prompt: ${prompt.name}`);
     const pattern = new RegExp(regex, 'si'); // 's' flag for dotAll mode, 'i' because of casing inconsistencies in unicode escape sequences (e.g. `\u201c` in the regex vs `\u201C` in the file)
     const match = content.match(pattern);

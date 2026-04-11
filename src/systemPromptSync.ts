@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'path';
 import matter from 'gray-matter';
 import { downloadStringsFile } from './systemPromptDownload';
+import { recoverStringsFile } from './systemPromptRecovery';
 import {
   storeHashes,
   getPromptHash,
@@ -935,15 +936,27 @@ export const syncPrompt = async (
  * Main sync function - downloads strings for current CC version and syncs all prompts
  */
 export const syncSystemPrompts = async (
-  ccVersion: string
+  ccVersion: string,
+  nativeInstallationPath?: string
 ): Promise<SyncSummary> => {
   const summary: SyncSummary = {
     ccVersion,
     results: [],
   };
 
-  // Download strings file for current CC version
-  const stringsFile = await downloadStringsFile(ccVersion);
+  let stringsFile: StringsFile;
+  try {
+    stringsFile = await downloadStringsFile(ccVersion);
+  } catch (error) {
+    const recovered = await recoverStringsFile(
+      ccVersion,
+      nativeInstallationPath
+    );
+    if (!recovered) {
+      throw error;
+    }
+    stringsFile = recovered;
+  }
 
   // Store hashes for all prompts in this version
   await storeHashes(stringsFile);
@@ -977,10 +990,23 @@ let globalCachedVersion: string | null = null;
  * @param version - Version string to preload
  */
 export const preloadStringsFile = async (
-  version: string
+  version: string,
+  nativeInstallationPath?: string
 ): Promise<{ success: boolean; errorMessage?: string }> => {
   try {
-    const stringsFile = await downloadStringsFile(version);
+    let stringsFile: StringsFile;
+    try {
+      stringsFile = await downloadStringsFile(version);
+    } catch (error) {
+      const recovered = await recoverStringsFile(
+        version,
+        nativeInstallationPath
+      );
+      if (!recovered) {
+        throw error;
+      }
+      stringsFile = recovered;
+    }
     globalStringsFile = stringsFile;
     globalCachedVersion = version;
     return { success: true };

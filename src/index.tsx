@@ -393,7 +393,10 @@ async function handleApplyMode(
 
     // Preload strings file for system prompts
     console.log('Loading system prompts...');
-    const preloadResult = await preloadStringsFile(ccInstInfo.version);
+    const preloadResult = await preloadStringsFile(
+      ccInstInfo.version,
+      ccInstInfo.nativeInstallationPath
+    );
     if (!preloadResult.success) {
       console.log(chalk.red('\n✖ Error downloading system prompts:'));
       console.log(chalk.red(`  ${preloadResult.errorMessage}`));

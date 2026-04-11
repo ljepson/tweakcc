@@ -1,37 +1,35 @@
 import { showDiff } from './index';
 
 const SYNTHETIC_META_SENTINEL = '[Synthetic empty meta message]';
-const EMPTY_TOOL_REPAIR_NEEDLE = 'n$({content:"",isMeta:!0})';
-const NO_CONTENT_TOOL_REPAIR_NEEDLE = 'n$({content:vN,isMeta:!0})';
-const LEGACY_NO_CONTENT_TOOL_REPAIR_NEEDLE = 'n$({content:rV,isMeta:!0})';
-const SYNTHETIC_META_REPLACEMENT = `n$({content:"${SYNTHETIC_META_SENTINEL}",isMeta:!0})`;
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const writeSuppressNoContentPlaceholders = (
   oldFile: string
 ): string | null => {
   let nextFile = oldFile;
 
-  const constructorNeedles = [
-    'message:{role:"user",content:H||vN}',
-    'message:{role:"user",content:H||rV}',
-  ];
-  const constructorNeedle = constructorNeedles.find(needle =>
-    nextFile.includes(needle)
+  const userMessageFactoryMatch = nextFile.match(
+    /function ([$\w]+)\(\{content:([$\w]+),isMeta:[$\w]+,[\s\S]*?message:\{role:"user",content:\2\|\|([$\w]+)\}/
+  );
+  const constructorMatch = nextFile.match(
+    /message:\{role:"user",content:([$\w]+)\|\|([$\w]+)\}/
   );
 
-  if (!constructorNeedle) {
+  if (!userMessageFactoryMatch || !constructorMatch) {
     console.error(
       'patch: suppressNoContentPlaceholders: failed to find user message constructor'
     );
     return null;
   }
 
-  const constructorReplacement = constructorNeedle.replace(
-    'content:H||',
-    'content:$?H??"":H||'
-  );
+  const [, userMessageFactory, , noContentVar] = userMessageFactoryMatch;
+  const [constructorNeedle, constructorContentVar, constructorFallbackVar] =
+    constructorMatch;
+  const constructorReplacement = `message:{role:"user",content:${constructorContentVar}?${constructorContentVar}??"":${constructorContentVar}||${constructorFallbackVar}}`;
+
   if (constructorNeedle !== constructorReplacement) {
-    const constructorIndex = nextFile.indexOf(constructorNeedle);
+    const constructorIndex = constructorMatch.index!;
     const afterConstructorFile =
       nextFile.slice(0, constructorIndex) +
       constructorReplacement +
@@ -47,27 +45,25 @@ export const writeSuppressNoContentPlaceholders = (
     nextFile = afterConstructorFile;
   }
 
-  const assistantRepairNeedles = ['text:vN', 'text:rV'];
-  const assistantRepairNeedle = assistantRepairNeedles.find(needle =>
-    nextFile.includes(
-      `tengu_fixed_empty_assistant_content",{messageUUID:K.uuid,messageIndex:_}),{...K,message:{...K.message,content:[{type:"text",${needle},citations:[]}]}}`
-    )
+  const assistantRepairMatch = nextFile.match(
+    /tengu_fixed_empty_assistant_content",\{messageUUID:([$\w]+)\.uuid,messageIndex:([$\w]+)\}[\s\S]{0,200}?text:([$\w]+),citations:\[\]/
   );
 
-  if (!assistantRepairNeedle) {
+  if (!assistantRepairMatch) {
     console.error(
       'patch: suppressNoContentPlaceholders: failed to find empty assistant repair'
     );
     return null;
   }
 
-  const assistantNeedle = `tengu_fixed_empty_assistant_content",{messageUUID:K.uuid,messageIndex:_}),{...K,message:{...K.message,content:[{type:"text",${assistantRepairNeedle},citations:[]}]}}`;
-  const assistantReplacement = assistantNeedle.replace(
-    assistantRepairNeedle,
-    'text:"[No message content]"'
-  );
+  const [, , , assistantTextVar] = assistantRepairMatch;
+  const assistantNeedle = `text:${assistantTextVar},citations:[]`;
+  const assistantReplacement = 'text:"[No message content]",citations:[]';
   if (assistantNeedle !== assistantReplacement) {
-    const assistantIndex = nextFile.indexOf(assistantNeedle);
+    const assistantIndex = nextFile.indexOf(
+      assistantNeedle,
+      assistantRepairMatch.index
+    );
     const afterAssistantFile =
       nextFile.slice(0, assistantIndex) +
       assistantReplacement +
@@ -83,30 +79,27 @@ export const writeSuppressNoContentPlaceholders = (
     nextFile = afterAssistantFile;
   }
 
-  const toolRepairNeedsRewrite =
-    nextFile.includes(NO_CONTENT_TOOL_REPAIR_NEEDLE) ||
-    nextFile.includes(LEGACY_NO_CONTENT_TOOL_REPAIR_NEEDLE) ||
-    nextFile.includes(EMPTY_TOOL_REPAIR_NEEDLE);
-  if (toolRepairNeedsRewrite) {
-    const toolRepairIndex = [
-      nextFile.indexOf(NO_CONTENT_TOOL_REPAIR_NEEDLE),
-      nextFile.indexOf(LEGACY_NO_CONTENT_TOOL_REPAIR_NEEDLE),
-      nextFile.indexOf(EMPTY_TOOL_REPAIR_NEEDLE),
-    ].find(index => index !== -1)!;
-    const afterToolRepairFile = nextFile
-      .replaceAll(NO_CONTENT_TOOL_REPAIR_NEEDLE, SYNTHETIC_META_REPLACEMENT)
-      .replaceAll(
-        LEGACY_NO_CONTENT_TOOL_REPAIR_NEEDLE,
-        SYNTHETIC_META_REPLACEMENT
-      )
-      .replaceAll(EMPTY_TOOL_REPAIR_NEEDLE, SYNTHETIC_META_REPLACEMENT);
+  const toolRepairPattern = new RegExp(
+    `${escapeRegex(userMessageFactory)}\\(\\{content:(?:""|${escapeRegex(
+      noContentVar
+    )}),isMeta:!0\\}\\)`,
+    'g'
+  );
+  const toolRepairMatch = toolRepairPattern.exec(nextFile);
+  if (toolRepairMatch) {
+    const toolRepairIndex = toolRepairMatch.index;
+    const syntheticMetaReplacement = `${userMessageFactory}({content:"${SYNTHETIC_META_SENTINEL}",isMeta:!0})`;
+    const afterToolRepairFile = nextFile.replaceAll(
+      toolRepairPattern,
+      syntheticMetaReplacement
+    );
 
     showDiff(
       nextFile,
       afterToolRepairFile,
-      SYNTHETIC_META_REPLACEMENT,
+      syntheticMetaReplacement,
       toolRepairIndex,
-      toolRepairIndex + NO_CONTENT_TOOL_REPAIR_NEEDLE.length
+      toolRepairIndex + toolRepairMatch[0].length
     );
     nextFile = afterToolRepairFile;
   }

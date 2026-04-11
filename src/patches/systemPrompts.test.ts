@@ -233,6 +233,36 @@ describe('systemPrompts.ts', () => {
       );
     });
 
+    it('should skip discovered prompts without warning noise', async () => {
+      const mockPromptData = buildMockPromptData({
+        promptId: 'discovered-managed-agents-u2014-python-0397ffdf3b',
+        prompt: {
+          name: 'Managed Agents - Python',
+          content: 'Synthetic discovered prompt',
+        },
+        regex: 'Synthetic discovered prompt',
+        getInterpolatedContent: () => 'Synthetic discovered prompt',
+        pieces: ['Synthetic discovered prompt'],
+      });
+
+      setupMocks(mockPromptData);
+
+      const cliContent = 'unrelated cli content';
+
+      const result = await applySystemPrompts(cliContent, '1.0.0', false);
+
+      expect(result.newContent).toBe(cliContent);
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0]).toMatchObject({
+        id: 'discovered-managed-agents-u2014-python-0397ffdf3b',
+        applied: false,
+        skipped: true,
+      });
+      expect(result.results[0].details).toContain('structured recovery');
+      expect(console.log).not.toHaveBeenCalled();
+      expect(systemPromptHashIndex.setAppliedHash).not.toHaveBeenCalled();
+    });
+
     it('should skip prompt with applied:false when escapeDepthZeroBackticks returns incomplete', async () => {
       const mockPromptData = buildMockPromptData({
         prompt: { content: 'text ${unclosed backtick' },

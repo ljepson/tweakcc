@@ -75,7 +75,10 @@ export async function completeStartupCheck(
   // Sync system prompts with the current CC version
   if (ccInstInfo.version) {
     try {
-      const syncSummary = await syncSystemPrompts(ccInstInfo.version);
+      const syncSummary = await syncSystemPrompts(
+        ccInstInfo.version,
+        ccInstInfo.nativeInstallationPath
+      );
       displaySyncResults(syncSummary);
     } catch {
       // Error already logged with chalk.red in syncSystemPrompts

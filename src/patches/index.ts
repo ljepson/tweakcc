@@ -81,6 +81,7 @@ import { writeVoiceMode } from './voiceMode';
 import { writeChannelsMode } from './channelsMode';
 import { writeKairos } from './kairos';
 import { writeGrowthBookAntParity } from './growthBookAntParity';
+import { writeSuppressGitAttribution } from './suppressGitAttribution';
 import { writeContextDiagnostics } from './contextDiagnostics';
 import { writePlanModeInterview } from './planModeInterview';
 import { writeReactiveCompact } from './reactiveCompact';
@@ -205,6 +206,13 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.ALWAYS_APPLIED,
     description:
       'Stop synthetic empty messages from turning into literal "(no content)" artifacts',
+  },
+  {
+    id: 'suppress-git-attribution',
+    name: 'Suppress git attribution',
+    group: PatchGroup.ALWAYS_APPLIED,
+    description:
+      'AI attribution (Co-Authored-By, 🤖 Generated with) will not be appended to git commits or PRs',
   },
   // Misc Configurable
   {
@@ -826,6 +834,9 @@ export const applyCustomization = async (
     },
     'fix-lsp-support': {
       fn: c => writeFixLspSupport(c),
+    },
+    'suppress-git-attribution': {
+      fn: c => writeSuppressGitAttribution(c),
     },
     'statusline-update-throttle': {
       fn: c =>

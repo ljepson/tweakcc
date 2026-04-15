@@ -88,6 +88,7 @@ import { writeReactiveCompact } from './reactiveCompact';
 import { writeContextCollapse } from './contextCollapse';
 import { writeEngramMemoryBridge } from './engramMemoryBridge';
 import { writeEngramConditional } from './engramConditional';
+import { writeParallelToolCallRecovery } from './parallelToolCallRecovery';
 import {
   writeAutoLaunchVerificationAgent,
   writeVerificationAgentAvailability,
@@ -452,6 +453,13 @@ const PATCH_DEFINITIONS = [
     name: 'Engram memory bridge',
     group: PatchGroup.FEATURES,
     description: 'Sync extracted memories to Engram',
+  },
+  {
+    id: 'parallel-tool-call-recovery',
+    name: 'Parallel tool call recovery',
+    group: PatchGroup.FEATURES,
+    description:
+      'Recover legacy transcript chains that miss sibling assistant or tool-result events from parallel tool calls',
   },
   {
     id: 'verification-agent',
@@ -1051,6 +1059,10 @@ export const applyCustomization = async (
     'engram-conditional': {
       fn: c => writeEngramConditional(c),
       condition: !!config.settings.antParity?.enableEngramMemoryBridge,
+    },
+    'parallel-tool-call-recovery': {
+      fn: c => writeParallelToolCallRecovery(c),
+      condition: !!config.settings.misc?.enableParallelToolCallRecovery,
     },
     // Features
     'allow-custom-agent-models': {

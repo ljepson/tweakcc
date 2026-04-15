@@ -141,6 +141,7 @@ export interface MiscConfig {
   enableVoiceMode: boolean;
   enableVoiceConciseOutput: boolean;
   enableChannelsMode: boolean;
+  enableParallelToolCallRecovery: boolean;
 }
 
 export interface InputPatternHighlighter {

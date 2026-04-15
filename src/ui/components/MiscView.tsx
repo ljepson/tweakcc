@@ -89,6 +89,7 @@ export function MiscView({ onSubmit }: MiscViewProps) {
     enableVoiceMode: false,
     enableVoiceConciseOutput: true,
     enableChannelsMode: false,
+    enableParallelToolCallRecovery: false,
   };
 
   const ensureMisc = () => {
@@ -449,6 +450,20 @@ export function MiscView({ onSubmit }: MiscViewProps) {
             ensureMisc();
             settings.misc!.enableChannelsMode =
               !settings.misc!.enableChannelsMode;
+          });
+        },
+      },
+      {
+        id: 'enableParallelToolCallRecovery',
+        title: 'Enable parallel tool call recovery',
+        description:
+          'Legacy compatibility patch for transcript chains that drop sibling assistant or tool-result events from parallel tool calls.',
+        getValue: () => settings.misc?.enableParallelToolCallRecovery ?? false,
+        toggle: () => {
+          updateSettings(settings => {
+            ensureMisc();
+            settings.misc!.enableParallelToolCallRecovery =
+              !settings.misc!.enableParallelToolCallRecovery;
           });
         },
       },

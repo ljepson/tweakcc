@@ -723,6 +723,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enableVoiceMode: false,
     enableVoiceConciseOutput: true,
     enableChannelsMode: false,
+    enableParallelToolCallRecovery: false,
   },
   toolsets: [],
   defaultToolset: null,

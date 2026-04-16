@@ -34,6 +34,26 @@ interface ResolvedInstallation {
   resolvedPath: string;
 }
 
+async function getCanonicalPath(filePath: string): Promise<string> {
+  try {
+    const resolvedPath = await fs.realpath(filePath);
+    return typeof resolvedPath === 'string' && resolvedPath.length > 0
+      ? resolvedPath
+      : filePath;
+  } catch {
+    return filePath;
+  }
+}
+
+async function isNonEmptyFile(filePath: string): Promise<boolean> {
+  try {
+    const stats = await fs.stat(filePath);
+    return stats.size > 0;
+  } catch {
+    return false;
+  }
+}
+
 // ============================================================================
 // Error classes
 // ============================================================================
@@ -447,19 +467,20 @@ export async function collectCandidates(): Promise<InstallationCandidate[]> {
   // Collect cli.js candidates
   for (const searchPath of CLIJS_SEARCH_PATHS) {
     const cliPath = path.join(searchPath, 'cli.js');
-    if (seenPaths.has(cliPath)) {
-      continue;
-    }
     try {
       if (await doesFileExist(cliPath)) {
+        const canonicalCliPath = await getCanonicalPath(cliPath);
+        if (seenPaths.has(canonicalCliPath)) {
+          continue;
+        }
         debug(`collectCandidates: Found cli.js at ${cliPath}`);
         const version = await extractVersionFromJsFile(cliPath);
         candidates.push({
-          path: cliPath,
+          path: canonicalCliPath,
           kind: 'npm-based',
           version,
         });
-        seenPaths.add(cliPath);
+        seenPaths.add(canonicalCliPath);
       }
     } catch (error) {
       debug(`collectCandidates: Error checking ${cliPath}:`, error);
@@ -468,26 +489,34 @@ export async function collectCandidates(): Promise<InstallationCandidate[]> {
 
   // Collect native binary candidates
   for (const nativePath of NATIVE_SEARCH_PATHS) {
-    if (seenPaths.has(nativePath)) {
-      continue;
-    }
     try {
       if (await doesFileExist(nativePath)) {
+        if (!(await isNonEmptyFile(nativePath))) {
+          debug(
+            `collectCandidates: Skipping empty native binary placeholder at ${nativePath}`
+          );
+          continue;
+        }
+
         // Resolve through Nix wrapper if applicable
         const resolvedNativePath = await maybeResolveNixWrapper(nativePath);
+        const canonicalNativePath = await getCanonicalPath(resolvedNativePath);
+        if (seenPaths.has(canonicalNativePath)) {
+          continue;
+        }
         debug(
           `collectCandidates: Found native binary at ${nativePath}${resolvedNativePath !== nativePath ? ` (resolved -> ${resolvedNativePath})` : ''}`
         );
         const version = await extractVersion(
-          resolvedNativePath,
+          canonicalNativePath,
           'native-binary'
         );
         candidates.push({
-          path: resolvedNativePath,
+          path: canonicalNativePath,
           kind: 'native-binary',
           version,
         });
-        seenPaths.add(nativePath);
+        seenPaths.add(canonicalNativePath);
       }
     } catch (error) {
       debug(`collectCandidates: Error checking ${nativePath}:`, error);
@@ -530,7 +559,10 @@ function getEnvVarExample(examplePath: string): string {
 function getMultipleCandidatesError(
   candidates: InstallationCandidate[]
 ): string {
-  const examplePath = candidates[0]?.path || '/path/to/claude';
+  const examplePath =
+    getUniqueLatestCandidate(candidates)?.path ??
+    candidates[0]?.path ??
+    '/path/to/claude';
 
   return `Multiple Claude Code installations found.
 
@@ -576,6 +608,27 @@ function toInstallationInfo(
   } else {
     return { nativeInstallationPath: resolvedPath, version, source };
   }
+}
+
+function getUniqueLatestCandidate(
+  candidates: InstallationCandidate[]
+): InstallationCandidate | null {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  let latestVersion = candidates[0].version;
+  for (const candidate of candidates.slice(1)) {
+    if (compareSemverVersions(candidate.version, latestVersion) > 0) {
+      latestVersion = candidate.version;
+    }
+  }
+
+  const latestCandidates = candidates.filter(
+    candidate => compareSemverVersions(candidate.version, latestVersion) === 0
+  );
+
+  return latestCandidates.length === 1 ? latestCandidates[0] : null;
 }
 
 /**
@@ -722,6 +775,19 @@ export async function findClaudeCodeInstallation(
 
   // Multiple candidates found
   if (!options.interactive) {
+    const preferredCandidate = getUniqueLatestCandidate(candidates);
+    if (preferredCandidate) {
+      debug(
+        `Auto-selecting latest candidate in non-interactive mode: ${preferredCandidate.path} (${preferredCandidate.kind}, v${preferredCandidate.version})`
+      );
+      return toInstallationInfo(
+        preferredCandidate.path,
+        preferredCandidate.kind,
+        preferredCandidate.version,
+        'search-paths'
+      );
+    }
+
     throw new InstallationDetectionError(
       getMultipleCandidatesError(candidates)
     );

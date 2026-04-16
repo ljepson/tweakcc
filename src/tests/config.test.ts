@@ -11,7 +11,7 @@ import * as misc from '../utils';
 import * as systemPromptHashIndex from '../systemPromptHashIndex';
 import * as nativeInstallation from '../nativeInstallationLoader';
 import { DEFAULT_SETTINGS } from '../defaultSettings';
-import { CLIJS_SEARCH_PATHS } from '../installationPaths';
+import { CLIJS_SEARCH_PATHS, NATIVE_SEARCH_PATHS } from '../installationPaths';
 import { restoreClijsFromBackup } from '../installationBackup';
 import { startupCheck } from '../startup';
 import { findClaudeCodeInstallation } from '../installationDetection';
@@ -66,6 +66,7 @@ import {
 
 describe('config.ts', () => {
   let originalSearchPathsLength: number;
+  let originalNativeSearchPathsLength: number;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,9 +83,11 @@ describe('config.ts', () => {
 
     // Save original length to detect mutations
     originalSearchPathsLength = CLIJS_SEARCH_PATHS.length;
+    originalNativeSearchPathsLength = NATIVE_SEARCH_PATHS.length;
 
     // By default, pretend there is no `claude` executable on PATH.
     vi.mocked(whichMock).mockRejectedValue(new Error('not found'));
+    vi.spyOn(fs, 'realpath').mockImplementation(async p => p.toString());
 
     mockMagicInstance.detect.mockReset();
     (WASMagic.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -97,6 +100,9 @@ describe('config.ts', () => {
     // findClaudeCodeInstallation mutates the array with unshift()
     while (CLIJS_SEARCH_PATHS.length > originalSearchPathsLength) {
       CLIJS_SEARCH_PATHS.shift();
+    }
+    while (NATIVE_SEARCH_PATHS.length > originalNativeSearchPathsLength) {
+      NATIVE_SEARCH_PATHS.shift();
     }
   });
 
@@ -327,6 +333,186 @@ describe('config.ts', () => {
         cliPath: mockCliPath,
         source: 'search-paths',
         version: '1.2.3',
+      });
+    });
+
+    it('should auto-select the unique latest candidate in non-interactive mode', async () => {
+      const mockConfig = {
+        ccInstallationPath: null,
+        changesApplied: false,
+        ccVersion: '',
+        lastModified: '',
+        settings: DEFAULT_SETTINGS,
+      };
+
+      const duplicateCliDirA =
+        '/fake/lib/node_modules/@anthropic-ai/claude-code';
+      const duplicateCliDirB =
+        '/fake/usr/lib/node_modules/@anthropic-ai/claude-code';
+      const duplicateCliPathA = path.join(duplicateCliDirA, 'cli.js');
+      const duplicateCliPathB = path.join(duplicateCliDirB, 'cli.js');
+      const native101 = '/fake/.local/share/claude/versions/2.1.101';
+      const native110 = '/fake/.local/share/claude/versions/2.1.110';
+
+      CLIJS_SEARCH_PATHS.unshift(duplicateCliDirA, duplicateCliDirB);
+      NATIVE_SEARCH_PATHS.unshift(native101, native110);
+
+      vi.spyOn(fs, 'stat').mockImplementation(async p => {
+        if (
+          p === duplicateCliPathA ||
+          p === duplicateCliPathB ||
+          p === native101 ||
+          p === native110
+        ) {
+          if (p === native101 || p === native110) {
+            return { size: 1234 } as Stats;
+          }
+          return {} as Stats;
+        }
+        throw createEnoent();
+      });
+
+      vi.spyOn(fs, 'realpath').mockImplementation(async p => {
+        if (p === duplicateCliPathA || p === duplicateCliPathB) {
+          return duplicateCliPathA;
+        }
+        return p.toString();
+      });
+
+      vi.spyOn(fs, 'readFile').mockImplementation(async (p, encoding) => {
+        if (
+          (p === duplicateCliPathA || p === duplicateCliPathB) &&
+          encoding === 'utf8'
+        ) {
+          return 'VERSION:"2.1.68" VERSION:"2.1.68" VERSION:"2.1.68"';
+        }
+        throw createEnoent();
+      });
+
+      vi.mocked(
+        nativeInstallation.extractClaudeJsFromNativeInstallation
+      ).mockImplementation(async binPath => {
+        if (binPath === native101) {
+          return Buffer.from(
+            'VERSION:"2.1.101" VERSION:"2.1.101" VERSION:"2.1.101"',
+            'utf8'
+          );
+        }
+        if (binPath === native110) {
+          return Buffer.from(
+            'VERSION:"2.1.110" VERSION:"2.1.110" VERSION:"2.1.110"',
+            'utf8'
+          );
+        }
+        return null;
+      });
+
+      const result = await findClaudeCodeInstallation(mockConfig, {
+        interactive: false,
+      });
+
+      expect(result).toEqual({
+        nativeInstallationPath: native110,
+        source: 'search-paths',
+        version: '2.1.110',
+      });
+    });
+
+    it('should deduplicate search-path candidates that resolve to the same cli.js', async () => {
+      const mockConfig = {
+        ccInstallationPath: null,
+        changesApplied: false,
+        ccVersion: '',
+        lastModified: '',
+        settings: DEFAULT_SETTINGS,
+      };
+
+      const cliDirA = '/fake/lib/node_modules/@anthropic-ai/claude-code';
+      const cliDirB = '/fake/usr/lib/node_modules/@anthropic-ai/claude-code';
+      const cliPathA = path.join(cliDirA, 'cli.js');
+      const cliPathB = path.join(cliDirB, 'cli.js');
+
+      CLIJS_SEARCH_PATHS.unshift(cliDirA, cliDirB);
+
+      vi.spyOn(fs, 'stat').mockImplementation(async p => {
+        if (p === cliPathA || p === cliPathB) {
+          return {} as Stats;
+        }
+        throw createEnoent();
+      });
+
+      vi.spyOn(fs, 'realpath').mockImplementation(async p => {
+        if (p === cliPathA || p === cliPathB) {
+          return cliPathA;
+        }
+        return p.toString();
+      });
+
+      const readFileSpy = vi
+        .spyOn(fs, 'readFile')
+        .mockImplementation(async (p, encoding) => {
+          if ((p === cliPathA || p === cliPathB) && encoding === 'utf8') {
+            return 'VERSION:"2.1.110" VERSION:"2.1.110" VERSION:"2.1.110"';
+          }
+          throw createEnoent();
+        });
+
+      const result = await findClaudeCodeInstallation(mockConfig, {
+        interactive: false,
+      });
+
+      expect(result).toEqual({
+        cliPath: cliPathA,
+        source: 'search-paths',
+        version: '2.1.110',
+      });
+      expect(readFileSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should ignore empty native version placeholders when auto-selecting candidates', async () => {
+      const mockConfig = {
+        ccInstallationPath: null,
+        changesApplied: false,
+        ccVersion: '',
+        lastModified: '',
+        settings: DEFAULT_SETTINGS,
+      };
+
+      const native101 = '/fake/.local/share/claude/versions/2.1.101';
+      const native110 = '/fake/.local/share/claude/versions/2.1.110';
+
+      NATIVE_SEARCH_PATHS.unshift(native101, native110);
+
+      vi.spyOn(fs, 'stat').mockImplementation(async p => {
+        if (p === native101) {
+          return { size: 1234 } as Stats;
+        }
+        if (p === native110) {
+          return { size: 0 } as Stats;
+        }
+        throw createEnoent();
+      });
+
+      vi.mocked(
+        nativeInstallation.extractClaudeJsFromNativeInstallation
+      ).mockImplementation(async binPath => {
+        if (binPath === native101) {
+          return Buffer.from(
+            'VERSION:"2.1.101" VERSION:"2.1.101" VERSION:"2.1.101"',
+            'utf8'
+          );
+        }
+        return null;
+      });
+
+      const result = await findClaudeCodeInstallation(mockConfig, {
+        interactive: false,
+      });
+
+      expect(result).toEqual({
+        nativeInstallationPath: native101,
+        source: 'search-paths',
+        version: '2.1.101',
       });
     });
 

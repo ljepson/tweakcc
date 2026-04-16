@@ -2,6 +2,10 @@
 
 import { LocationResult, showDiff } from './index';
 
+interface LineNumberFormatterLocation extends LocationResult {
+  newCode: string;
+}
+
 /**
  * Find the location of the line number formatting function.
  *
@@ -13,28 +17,29 @@ import { LocationResult, showDiff } from './index';
  */
 const getLineNumberFormatterLocation = (
   oldFile: string
-): LocationResult | null => {
+): LineNumberFormatterLocation | null => {
   const patterns = [
     {
       pattern:
         /if\(([$\w]+)\.length>=\d+\)return`\$\{\1\}(?:→|\\u2192)\$\{([$\w]+)\}`;return`\$\{\1\.padStart\(\d+," "\)\}(?:→|\\u2192)\$\{\2\}`/,
-      contentGroup: 2,
+      getNewCode: (match: RegExpMatchArray) => `return ${match[2]};`,
     },
     {
       pattern:
-        /function [$\w]+\(([$\w]+),([$\w]+),([$\w]+)\)\{let ([$\w]+)=\1\.endsWith\("\\r"\)\?\1\.slice\(0,-1\):\1;if\(\3\)return`\$\{\2\}\t\$\{([$\w]+)\}`;let ([$\w]+)=String\(\2\);return \6\.length>=\d+\?`\$\{\6\}(?:→|\\u2192)\$\{\4\}`:`\$\{\6\.padStart\(\d+," "\)\}(?:→|\\u2192)\$\{\4\}` ?\}/,
-      contentGroup: 4,
+        /function ([$\w]+)\(([$\w]+),([$\w]+),([$\w]+)\)\{let ([$\w]+)=\2\.endsWith\("\\r"\)\?\2\.slice\(0,-1\):\2;if\(\4\)return`\$\{\3\}\t\$\{([$\w]+)\}`;let ([$\w]+)=String\(\3\);return \7\.length>=\d+\?`\$\{\7\}(?:→|\\u2192)\$\{\5\}`:`\$\{\7\.padStart\(\d+," "\)\}(?:→|\\u2192)\$\{\5\}` ?\}/,
+      getNewCode: (match: RegExpMatchArray) =>
+        `function ${match[1]}(${match[2]},${match[3]},${match[4]}){let ${match[5]}=${match[2]}.endsWith("\\r")?${match[2]}.slice(0,-1):${match[2]};return ${match[5]}}`,
     },
   ];
   const matched = patterns
-    .map(({ pattern, contentGroup }) => {
+    .map(({ pattern, getNewCode }) => {
       const match = oldFile.match(pattern);
       return match && match.index !== undefined
-        ? { match, contentGroup }
+        ? { match, newCode: getNewCode(match) }
         : null;
     })
     .find(
-      (value): value is { match: RegExpMatchArray; contentGroup: number } =>
+      (value): value is { match: RegExpMatchArray; newCode: string } =>
         value !== null
     );
 
@@ -44,13 +49,14 @@ const getLineNumberFormatterLocation = (
     );
     return null;
   }
-  const { match, contentGroup } = matched;
+  const { match, newCode } = matched;
   const startIndex = match.index!;
 
   return {
     startIndex,
     endIndex: startIndex + match[0].length,
-    identifiers: [match[1], match[contentGroup]],
+    identifiers: [match[1]],
+    newCode,
   };
 };
 
@@ -60,19 +66,17 @@ export const writeSuppressLineNumbers = (oldFile: string): string | null => {
     return null;
   }
 
-  const contentVar = location.identifiers?.[1];
-  if (!contentVar) {
-    console.error('patch: suppressLineNumbers: content variable not captured');
-    return null;
-  }
-
-  // Replace the entire line number formatting logic with just returning the content
-  const newCode = `return ${contentVar}`;
   const newFile =
     oldFile.slice(0, location.startIndex) +
-    newCode +
+    location.newCode +
     oldFile.slice(location.endIndex);
 
-  showDiff(oldFile, newFile, newCode, location.startIndex, location.endIndex);
+  showDiff(
+    oldFile,
+    newFile,
+    location.newCode,
+    location.startIndex,
+    location.endIndex
+  );
   return newFile;
 };

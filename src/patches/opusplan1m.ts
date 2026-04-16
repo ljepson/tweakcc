@@ -111,7 +111,7 @@ const patchModelAliasesList = (oldFile: string): string | null => {
 const patchDescriptionFunction = (oldFile: string): string | null => {
   // Pattern matches: if (VAR === "opusplan") return "Opus 4.6 in plan mode, else Sonnet 4.6";
   const pattern =
-    /(if\s*\(\s*([$\w]+)\s*===\s*"opusplan"\s*\)\s*return\s*"Opus .{0,20} in plan mode, else Sonnet .{0,20}";)/;
+    /(if\s*\(\s*([$\w]+)\s*===\s*"opusplan"\s*\)\s*return\s*"Opus(?: .{0,20})? in plan mode, else Sonnet(?: .{0,20})?";)/;
 
   const match = oldFile.match(pattern);
   if (!match || match.index === undefined) {
@@ -122,11 +122,14 @@ const patchDescriptionFunction = (oldFile: string): string | null => {
   }
 
   const [fullMatch, , varName] = match;
+  const isVersioned = fullMatch.includes('4.');
+  const oneMDescription = isVersioned
+    ? 'Opus 4.6 in plan mode, else Sonnet 4.6 (1M context)'
+    : 'Opus in plan mode, else Sonnet (1M context)';
 
   // Add the opusplan[1m] case right after the opusplan case
   const replacement =
-    fullMatch +
-    `if(${varName}==="opusplan[1m]")return"Opus 4.6 in plan mode, else Sonnet 4.6 (1M context)";`;
+    fullMatch + `if(${varName}==="opusplan[1m]")return"${oneMDescription}";`;
 
   const newFile =
     oldFile.slice(0, match.index) +

@@ -15,6 +15,14 @@ export const writeMicrocompactFallback = (oldFile: string): string | null => {
     return oldFile;
   }
 
+  if (
+    oldFile.includes('function aS1(H){') &&
+    oldFile.includes('body:{context_hint:{enabled:!0}}') &&
+    oldFile.includes('FfK(H,$,{keepRecent:oS1})')
+  ) {
+    return oldFile;
+  }
+
   // Step 1: Patch the config object to use our setting instead of just the GB feature gate
   //
   // Old form (pre-2.1.92):

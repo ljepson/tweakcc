@@ -8,9 +8,11 @@ import { showDiff } from './index';
 export const findSlashCommandListEndPosition = (
   fileContents: string
 ): number | null => {
-  // Find the array with 30+ elements (slash commands list)
-  const arrayStartPattern = /=>\[([$a-zA-Z_][$\w]{1,2},){30}/;
-  const match = fileContents.match(arrayStartPattern);
+  const currentPattern =
+    /([$\w]+)=[$\w]+\(\(\)=>\[[\s\S]{100,12000}?\]\),[$\w]+=[$\w]+\(\(\)=>new Set\(\1\(\)\.flatMap/;
+  const legacyPattern = /=>\[([$a-zA-Z_][$\w]{1,2},){30}/;
+  const match =
+    fileContents.match(currentPattern) ?? fileContents.match(legacyPattern);
 
   if (!match || match.index === undefined) {
     console.error(

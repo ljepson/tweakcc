@@ -3,20 +3,19 @@
 import { LocationResult, showDiff } from './index';
 
 const getThinkerFormatLocation = (oldFile: string): LocationResult | null => {
-  const approxAreaPattern =
-    /spinnerTip:[$\w]+,(?:[$\w]+:[$\w]+,)*overrideMessage:[$\w]+,.{300}/;
-  const approxAreaMatch = oldFile.match(approxAreaPattern);
-
-  if (!approxAreaMatch || approxAreaMatch.index == undefined) {
-    console.error('patch: thinker format: failed to find approxAreaMatch');
-    return null;
-  }
-
-  // Search within a range of 1000 characters to support CC 2.0.76+
-  const searchSection = oldFile.slice(
-    approxAreaMatch.index,
-    approxAreaMatch.index + 10000
-  );
+  const approxAreaPatterns = [
+    /spinnerTip:[$\w]+,(?:[$\w]+:[$\w]+,)*overrideMessage:[$\w]+,.{300}/,
+    /spinnerTip:[$\w]+,[^]{0,4000}?spinnerVerb\?\?[$\w]+:[$\w]+\)\+"(?:…|\\u2026)"/,
+  ];
+  const approxAreaMatch = approxAreaPatterns
+    .map(pattern => oldFile.match(pattern))
+    .find(
+      (match): match is RegExpMatchArray => !!match && match.index !== undefined
+    );
+  const searchStart = approxAreaMatch?.index ?? 0;
+  const searchSection = approxAreaMatch
+    ? oldFile.slice(searchStart, searchStart + 10000)
+    : oldFile;
 
   // New nullish format: N=(Y??C?.activeForm??L)+"…"
   const formatPatternOld = /,([$\w]+)(=\(([^;]{1,200}?)\)\+"(?:…|\\u2026)")/;
@@ -25,12 +24,9 @@ const getThinkerFormatLocation = (oldFile: string): LocationResult | null => {
   if (formatMatchOld && formatMatchOld.index != undefined) {
     return {
       startIndex:
-        approxAreaMatch.index +
-        formatMatchOld.index +
-        formatMatchOld[1].length +
-        1, // + 1 for the comma
+        searchStart + formatMatchOld.index + formatMatchOld[1].length + 1, // + 1 for the comma
       endIndex:
-        approxAreaMatch.index +
+        searchStart +
         formatMatchOld.index +
         formatMatchOld[1].length +
         formatMatchOld[2].length +
@@ -47,12 +43,9 @@ const getThinkerFormatLocation = (oldFile: string): LocationResult | null => {
   if (formatMatchNew && formatMatchNew.index != undefined) {
     return {
       startIndex:
-        approxAreaMatch.index +
-        formatMatchNew.index +
-        formatMatchNew[1].length +
-        1, // + 1 for the comma
+        searchStart + formatMatchNew.index + formatMatchNew[1].length + 1, // + 1 for the comma
       endIndex:
-        approxAreaMatch.index +
+        searchStart +
         formatMatchNew.index +
         formatMatchNew[1].length +
         formatMatchNew[2].length +
@@ -69,18 +62,22 @@ const getThinkerFormatLocation = (oldFile: string): LocationResult | null => {
   if (formatMatchDirect && formatMatchDirect.index != undefined) {
     return {
       startIndex:
-        approxAreaMatch.index +
-        formatMatchDirect.index +
-        formatMatchDirect[1].length +
-        1,
+        searchStart + formatMatchDirect.index + formatMatchDirect[1].length + 1,
       endIndex:
-        approxAreaMatch.index +
+        searchStart +
         formatMatchDirect.index +
         formatMatchDirect[1].length +
         formatMatchDirect[2].length +
         1,
       identifiers: [formatMatchDirect[3]],
     };
+  }
+
+  if (!approxAreaMatch) {
+    console.error(
+      'patch: thinker format: failed to find approxAreaMatch or direct formatter'
+    );
+    return null;
   }
 
   console.error('patch: thinker format: failed to find formatMatch');

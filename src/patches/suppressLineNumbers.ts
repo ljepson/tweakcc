@@ -14,38 +14,43 @@ import { LocationResult, showDiff } from './index';
 const getLineNumberFormatterLocation = (
   oldFile: string
 ): LocationResult | null => {
-  // Pattern matches the line number formatting function:
-  // if(VAR.length>=${NUM})return`${VAR}→${VAR2}`;return`${VAR.padStart(${NUM}," ")}→${VAR2}`
-  // Note: Arrow can be literal → or escaped \u2192
-  //
-  // Breakdown:
-  // - if\( - literal "if("
-  // - ([$\w]+) - capture group 1: the line number variable
-  // - \.length>=${NUM}\) - literal ".length>=${NUM})"
-  // - return` - literal "return`"
-  // - \$\{\1\} - ${VAR} using backreference to group 1
-  // - (→|\\u2192) - the arrow character (literal or escaped)
-  // - \$\{([$\w]+)\} - capture group 2: the content variable
-  // - `;return` - literal ";return`"
-  // - \$\{\1\.padStart\(${NUM}," "\)\} - ${VAR.padStart(${NUM}," ")} using backreference
-  // - (→|\\u2192) - the arrow character again
-  // - \$\{\2\}` - ${VAR2}` using backreference to group 2
-  const pattern =
-    /if\(([$\w]+)\.length>=\d+\)return`\$\{\1\}(?:→|\\u2192)\$\{([$\w]+)\}`;return`\$\{\1\.padStart\(\d+," "\)\}(?:→|\\u2192)\$\{\2\}`/;
+  const patterns = [
+    {
+      pattern:
+        /if\(([$\w]+)\.length>=\d+\)return`\$\{\1\}(?:→|\\u2192)\$\{([$\w]+)\}`;return`\$\{\1\.padStart\(\d+," "\)\}(?:→|\\u2192)\$\{\2\}`/,
+      contentGroup: 2,
+    },
+    {
+      pattern:
+        /function [$\w]+\(([$\w]+),([$\w]+),([$\w]+)\)\{let ([$\w]+)=\1\.endsWith\("\\r"\)\?\1\.slice\(0,-1\):\1;if\(\3\)return`\$\{\2\}\t\$\{([$\w]+)\}`;let ([$\w]+)=String\(\2\);return \6\.length>=\d+\?`\$\{\6\}(?:→|\\u2192)\$\{\4\}`:`\$\{\6\.padStart\(\d+," "\)\}(?:→|\\u2192)\$\{\4\}` ?\}/,
+      contentGroup: 4,
+    },
+  ];
+  const matched = patterns
+    .map(({ pattern, contentGroup }) => {
+      const match = oldFile.match(pattern);
+      return match && match.index !== undefined
+        ? { match, contentGroup }
+        : null;
+    })
+    .find(
+      (value): value is { match: RegExpMatchArray; contentGroup: number } =>
+        value !== null
+    );
 
-  const match = oldFile.match(pattern);
-
-  if (!match || match.index === undefined) {
+  if (!matched) {
     console.error(
       'patch: suppressLineNumbers: failed to find line number formatter pattern'
     );
     return null;
   }
+  const { match, contentGroup } = matched;
+  const startIndex = match.index!;
 
   return {
-    startIndex: match.index,
-    endIndex: match.index + match[0].length,
-    identifiers: [match[1], match[2]], // [lineNumVar, contentVar]
+    startIndex,
+    endIndex: startIndex + match[0].length,
+    identifiers: [match[1], match[contentGroup]],
   };
 };
 

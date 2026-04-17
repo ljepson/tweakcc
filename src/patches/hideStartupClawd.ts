@@ -48,7 +48,7 @@ const findStartupClawdComponents = (oldFile: string): number[] => {
   // Method 2 (CC 2.1.87+): Clawd art is in a data object, rendered by
   // functions that use color:"clawd_body". Find those rendering functions.
   const clawdBodyPattern =
-    /function ([$\w]+)\([$\w]+\)\{.{0,200}color:"clawd_body"/g;
+    /function ([$\w]+)\([$\w]+\)\{.{0,500}color:"clawd_body"/g;
   const seen = new Set<string>();
 
   let bodyMatch: RegExpExecArray | null;
@@ -63,9 +63,9 @@ const findStartupClawdComponents = (oldFile: string): number[] => {
   }
 
   // Also find the parent component that delegates to the clawd_body renderers
-  // Pattern: function X(H){...q49[...]...createElement(...{pose:...})...clawd_body
+  // Pattern: function X(H){...DATA[...]...createElement(...{pose:...})...clawd_body
   const parentPattern =
-    /function ([$\w]+)\([$\w]+\)\{.{0,400}q49\[.{0,400}color:"clawd_body"/g;
+    /function ([$\w]+)\([$\w]+\)\{.{0,400}[$\w]+\[\w+\]\[.{0,400}color:"clawd_body"/g;
   while ((bodyMatch = parentPattern.exec(oldFile)) !== null) {
     const fnName = bodyMatch[1];
     if (seen.has(fnName)) continue;

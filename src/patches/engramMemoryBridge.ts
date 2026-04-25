@@ -18,10 +18,14 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   const permissionPattern =
     /(if\(\(([$\w]+)\.name===[$\w]+\|\|\2\.name===[$\w]+\)&&"file_path"\s*in q\)\{(?:if\(\2\.name===[$\w]+&&[$\w]+\(\)\)return [$\w]+\(\2,`[^`]+`\);)?let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(return [$\w]+\(\2,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
   const permissionMatch = oldFile.match(permissionPattern);
+  const permissionPattern2 =
+    /(if\(\(([$\w]+)\.name===[$\w]+\|\|\2\.name===[$\w]+\)&&"file_path"in q\)\{(?:if\(\2\.name===[$\w]+&&[$\w]+\(\)\)return [$\w]+\(\2,`[^`]+`\);)?let [$\w]+=q\.file_path;if\(typeof [$\w]+==="string"&&[$\w]+\([$\w]+\)\)return\{behavior:"allow",updatedInput:q\}\})(let [$\w]+=[$\w]+\(\)\?[$\w]+:[$\w]+;return [$\w]+\(\2,`only \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\}, and \$\{[$\w]+\}\/\$\{[$\w]+\} within \$\{[$\w]+\} are allowed`\)\}\})/;
+  const permissionMatch2 = oldFile.match(permissionPattern2);
 
   if (
     !hasEngramPermission &&
-    (!permissionMatch || permissionMatch.index === undefined)
+    (!permissionMatch || permissionMatch.index === undefined) &&
+    (!permissionMatch2 || permissionMatch2.index === undefined)
   ) {
     console.error(
       'patch: engramMemoryBridge: failed to find auto-memory permission gate'
@@ -32,7 +36,8 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   let afterPermissionFile = oldFile;
 
   if (!hasEngramPermission) {
-    const permissionGroups = permissionMatch as RegExpMatchArray & {
+    const permissionGroups = (permissionMatch ??
+      permissionMatch2) as RegExpMatchArray & {
       index: number;
     };
     const [permissionNeedle, allowWrites, toolVar, denyTail] = permissionGroups;
@@ -61,7 +66,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   }
 
   const promptPattern =
-    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \(ls\/find\/cat\/stat\/wc\/head\/tail and similar\),[^`]*?All other tools \\u2014 [^`]*?Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
+    /`Available tools: \$\{[$\w]+\}, \$\{[$\w]+\}, \$\{[$\w]+\}, read-only \$\{[$\w]+\} \([^)]+\),[^`]*?All other tools \\u2014 [^`]*?Agent, write-capable \$\{[$\w]+\}, etc \\u2014 will be denied\.`/;
   const promptMatch = afterPermissionFile.match(promptPattern);
   const promptIndex = promptMatch ? promptMatch.index : -1;
 

@@ -345,7 +345,7 @@ if (toolsets.hasOwnProperty(currentToolset)) {
   if (allowedTools === "*") {
     ${toolAggregationVar} = ${toolAggregationCode};
   } else {
-    ${toolAggregationVar} = ${toolAggregationCode}.filter((toolDef) => allowedTools.includes(toolDef.name));
+    ${toolAggregationVar} = ${toolAggregationCode}.filter((toolDef) => allowedTools.includes(toolDef.name) || toolDef.name === "ToolSearch");
   }
 } else {
   ${toolAggregationVar} = ${toolAggregationCode};
@@ -358,6 +358,176 @@ if (toolsets.hasOwnProperty(currentToolset)) {
     oldFile.slice(0, startIndex) + replacement + oldFile.slice(endIndex);
 
   showDiff(oldFile, newFile, replacement, startIndex, endIndex);
+
+  return newFile;
+};
+
+/**
+ * Sub-patch 2b: Patch computeTools() to also filter the tools sent to the API.
+ *
+ * Sub-patch 2 only filters the UI display list (useMergedTools). The actual tools
+ * sent to the Claude API come from computeTools() inside getToolUseContext(), which
+ * independently recomputes the full unfiltered tool list from the store.
+ *
+ * In the minified code, computeTools looks like:
+ *   VARNAME=()=>{let STATE=STORE.getState(),
+ *     ASSEMBLED=assembleToolPool(STATE.toolPermissionContext,STATE.mcp.tools),
+ *     MERGED=mergeAndFilterTools(INIT,ASSEMBLED,STATE.toolPermissionContext.mode);
+ *     if(!AGENT)return MERGED;
+ *     return resolve(AGENT,MERGED,!1,!0).resolvedTools}
+ *
+ * We wrap both return statements with the toolset filter.
+ */
+export const writeComputeToolsFilter = (
+  oldFile: string,
+  toolsets: Toolset[],
+  defaultToolset: string | null
+): string | null => {
+  const stateInfo = getAppStateSelectorAndUseState(oldFile);
+  if (!stateInfo) {
+    console.error(
+      'patch: toolsets: computeToolsFilter: failed to find app state info'
+    );
+    return null;
+  }
+
+  // stateInfo validated above — computeTools reads toolset from STORE.getState() directly
+
+  // Find the computeTools closure pattern:
+  // VAR=()=>{let STATE=STORE.getState(),ASSEMBLED=ASSEMBLE(STATE.toolPermissionContext,STATE.mcp.tools),MERGED=MERGE(INIT,ASSEMBLED,STATE.toolPermissionContext.mode);if(!AGENT)return MERGED;return RESOLVE(AGENT,MERGED,!1,!0).resolvedTools}
+  const pattern =
+    /([$\w]+)=\(\)=>\{let ([$\w]+)=([$\w]+)\.getState\(\),([$\w]+)=([$\w]+)\(\2\.toolPermissionContext,\2\.mcp\.tools\),([$\w]+)=([$\w]+)\([$\w]+,\4,\2\.toolPermissionContext\.mode\);if\(!([$\w]+)\)return \6;return ([$\w]+)\(\8,\6,!1,!0\)\.resolvedTools\}/;
+
+  const match = oldFile.match(pattern);
+  if (!match || match.index === undefined) {
+    console.error(
+      'patch: toolsets: computeToolsFilter: failed to find computeTools pattern'
+    );
+    return null;
+  }
+
+  const closureVar = match[1];
+  const stateVar = match[2];
+  const storeVar = match[3];
+  const assembledVar = match[4];
+  const assembleFn = match[5];
+  const mergedVar = match[6];
+  const mergeFn = match[7];
+  const agentVar = match[8];
+  const resolveFn = match[9];
+
+  // Create toolsets mapping
+  const toolsetsJSON = JSON.stringify(
+    Object.fromEntries(
+      toolsets.map(ts => [
+        ts.name,
+        ts.allowedTools === '*' ? '*' : ts.allowedTools,
+      ])
+    )
+  );
+
+  const fallback = defaultToolset
+    ? JSON.stringify(defaultToolset)
+    : 'undefined';
+
+  // Actually let me re-examine the match to get the init tools var
+  const fullMatch = match[0];
+  // Extract the init var from MERGE(INIT,ASSEMBLED,...)
+  const mergeCallMatch = fullMatch.match(
+    new RegExp(
+      `${mergeFn.replace(/\$/g, '\\$')}\\(([$\\w]+),${assembledVar.replace(/\$/g, '\\$')},`
+    )
+  );
+  if (!mergeCallMatch) {
+    console.error(
+      'patch: toolsets: computeToolsFilter: failed to extract init var from merge call'
+    );
+    return null;
+  }
+  const initVar = mergeCallMatch[1];
+
+  // Set globalThis.__tweakcc_toolset so the error message helper can read it
+  const newClosure = `${closureVar}=()=>{let ${stateVar}=${storeVar}.getState(),${assembledVar}=${assembleFn}(${stateVar}.toolPermissionContext,${stateVar}.mcp.tools),${mergedVar}=${mergeFn}(${initVar},${assembledVar},${stateVar}.toolPermissionContext.mode);const __ts=${toolsetsJSON},__tc=${stateVar}.toolset??${fallback},__tf=(t)=>{globalThis.__tweakcc_toolset={name:__tc,tools:__ts[__tc]};if(__ts.hasOwnProperty(__tc)){const a=__ts[__tc];if(a==="*")return t;return t.filter(d=>a.includes(d.name)||d.name==="ToolSearch")}return t};if(!${agentVar})return __tf(${mergedVar});return __tf(${resolveFn}(${agentVar},${mergedVar},!1,!0).resolvedTools)}`;
+
+  const startIndex = match.index;
+  const endIndex = startIndex + fullMatch.length;
+
+  const newFile =
+    oldFile.slice(0, startIndex) + newClosure + oldFile.slice(endIndex);
+
+  showDiff(oldFile, newFile, newClosure, startIndex, endIndex);
+
+  return newFile;
+};
+
+/**
+ * Sub-patch 2c: Replace "No such tool available" errors with toolset-aware messages.
+ *
+ * When a toolset is active and the model tries to call a filtered-out tool,
+ * the generic "No such tool available: X" error wastes output context because
+ * the model often tries alternative tools that are also unavailable.
+ *
+ * This patch replaces those errors with messages that list the available tools
+ * and the active toolset, so the model knows what it CAN use.
+ */
+export const writeToolsetAwareErrors = (
+  oldFile: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _toolsets: Toolset[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _defaultToolset: string | null
+): string | null => {
+  // Note: toolsets/defaultToolset params are unused — the helper reads from
+  // globalThis.__tweakcc_toolset at runtime (set by writeComputeToolsFilter).
+
+  const errorPattern =
+    /`<tool_use_error>Error: No such tool available: ((?:\$\{[^}]+\})+)<\/tool_use_error>`/g;
+
+  let newFile = oldFile;
+  let matchCount = 0;
+
+  // Helper reads from globalThis.__tweakcc_toolset (set by computeTools filter in sub-patch 2b)
+  const helperName = '__tweakcc_toolErrorMsg';
+  const helperFn =
+    `function ${helperName}(toolName){` +
+    `var info=globalThis.__tweakcc_toolset;` +
+    `if(info&&info.tools&&info.tools!=="*"&&Array.isArray(info.tools)){` +
+    `return "<tool_use_error>Error: No such tool available: "+toolName+". The active toolset is '"+info.name+"' which only includes: "+info.tools.join(", ")+". Do not attempt to use "+toolName+" again — it will fail. If the user switches toolsets via /toolset, you may retry.</tool_use_error>"` +
+    `}return "<tool_use_error>Error: No such tool available: "+toolName+"</tool_use_error>"` +
+    `};`;
+
+  // Replace all error template literals with helper calls
+  newFile = newFile.replace(errorPattern, (_match, toolExpr) => {
+    matchCount++;
+    return `${helperName}(\`${toolExpr}\`)`;
+  });
+
+  if (matchCount === 0) {
+    console.error(
+      'patch: toolsets: toolsetAwareErrors: failed to find error pattern'
+    );
+    return null;
+  }
+
+  // Also replace the toolUseResult versions (without XML tags)
+  const resultPattern = /`Error: No such tool available: ((?:\$\{[^}]+\})+)`/g;
+  newFile = newFile.replace(resultPattern, (_match, toolExpr) => {
+    return `${helperName}(\`${toolExpr}\`).replace(/<\\/?tool_use_error>/g,"")`;
+  });
+
+  // Inject the helper function at the top of the file (after the shebang/comments)
+  const insertPoint = newFile.indexOf('\n', newFile.indexOf('// Version:'));
+  if (insertPoint === -1) {
+    console.error(
+      'patch: toolsets: toolsetAwareErrors: failed to find insertion point for helper'
+    );
+    return null;
+  }
+
+  newFile =
+    newFile.slice(0, insertPoint + 1) +
+    helperFn +
+    newFile.slice(insertPoint + 1);
 
   return newFile;
 };
@@ -534,8 +704,7 @@ export const writeToolsetComponentDefinition = (
 export const findShiftTabAppStateVarInsertionPoint = (
   oldFile: string
 ): number | null => {
-  // Search for the bash mode indicator
-  const bashModePattern = /\{color:"bashBorder"\},"! for bash mode"/;
+  const bashModePattern = /\{color:"bashBorder"\},"! for (?:bash|shell) mode"/;
   const match = oldFile.match(bashModePattern);
 
   if (!match || match.index === undefined) {

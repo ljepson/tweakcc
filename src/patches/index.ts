@@ -82,6 +82,8 @@ import { writeChannelsMode } from './channelsMode';
 import { writeKairos } from './kairos';
 import { writeGrowthBookAntParity } from './growthBookAntParity';
 import { writeSuppressGitAttribution } from './suppressGitAttribution';
+import { writeDisableFastMode } from './disableFastMode';
+import { writeSuppressBillingHeader } from './suppressBillingHeader';
 import { writeContextDiagnostics } from './contextDiagnostics';
 import { writePlanModeInterview } from './planModeInterview';
 import { writeReactiveCompact } from './reactiveCompact';
@@ -214,6 +216,19 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.ALWAYS_APPLIED,
     description:
       'AI attribution (Co-Authored-By, 🤖 Generated with) will not be appended to git commits or PRs',
+  },
+  {
+    id: 'disable-fast-mode',
+    name: 'Disable Fast mode',
+    group: PatchGroup.ALWAYS_APPLIED,
+    description: 'Fast mode will be disabled and hidden',
+  },
+  {
+    id: 'suppress-billing-header',
+    name: 'Suppress billing attribution header',
+    group: PatchGroup.ALWAYS_APPLIED,
+    description:
+      'The x-anthropic-billing-header attribution header will not be sent',
   },
   // Misc Configurable
   {
@@ -845,6 +860,12 @@ export const applyCustomization = async (
     },
     'suppress-git-attribution': {
       fn: c => writeSuppressGitAttribution(c),
+    },
+    'disable-fast-mode': {
+      fn: c => writeDisableFastMode(c),
+    },
+    'suppress-billing-header': {
+      fn: c => writeSuppressBillingHeader(c),
     },
     'statusline-update-throttle': {
       fn: c =>

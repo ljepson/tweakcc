@@ -23,6 +23,57 @@ export const writeMicrocompactFallback = (oldFile: string): string | null => {
     return oldFile;
   }
 
+  const contextHintEnabledPattern =
+    /function ([$\w]+)\(\)\{return ([$\w]+)\("tengu_hazel_osprey",!1\)\}/;
+  const contextHintReturnPattern =
+    /return E\(`\[CONTEXT_HINT_REJECT\] mc=\$\{!!([$\w]+)\} tokensSaved=\$\{\1\?\.tokensSaved\?\?0\}`\),\{messages:([$\w]+),/;
+  const contextHintEnabledMatch = oldFile.match(contextHintEnabledPattern);
+  const contextHintReturnMatch = oldFile.match(contextHintReturnPattern);
+
+  if (
+    contextHintEnabledMatch?.index !== undefined &&
+    contextHintReturnMatch?.index !== undefined
+  ) {
+    const nudgeObj = `{type:'system',subtype:'informational',content:'Time-based microcompact applied',level:'info',uuid:crypto.randomUUID(),timestamp:new Date().toISOString()}`;
+    const enabledReplacement = `function ${contextHintEnabledMatch[1]}(){return globalThis.__tweakccConfig?.settings.misc?.enableTimeBasedMicrocompact??false}`;
+    let newFile =
+      oldFile.slice(0, contextHintEnabledMatch.index) +
+      enabledReplacement +
+      oldFile.slice(
+        contextHintEnabledMatch.index + contextHintEnabledMatch[0].length
+      );
+
+    const returnMatchAfterEnable = newFile.match(contextHintReturnPattern);
+    if (!returnMatchAfterEnable || returnMatchAfterEnable.index === undefined) {
+      console.error(
+        'patch: microcompactFallback: failed to find context hint return after enablement'
+      );
+      return null;
+    }
+
+    const resultVar = returnMatchAfterEnable[2];
+    const returnReplacement = returnMatchAfterEnable[0].replace(
+      `messages:${resultVar},`,
+      `messages:[...${resultVar},${nudgeObj}],`
+    );
+    newFile =
+      newFile.slice(0, returnMatchAfterEnable.index) +
+      returnReplacement +
+      newFile.slice(
+        returnMatchAfterEnable.index + returnMatchAfterEnable[0].length
+      );
+
+    showDiff(
+      oldFile,
+      newFile,
+      'Microcompact Fallback (Context Hint Enablement)',
+      contextHintEnabledMatch.index,
+      contextHintEnabledMatch.index + contextHintEnabledMatch[0].length
+    );
+
+    return newFile;
+  }
+
   // Step 1: Patch the config object to use our setting instead of just the GB feature gate
   //
   // Old form (pre-2.1.92):

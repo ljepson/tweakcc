@@ -25,6 +25,39 @@ pnpm start           # Run built CLI
 node dist/index.mjs  # Alternative run command
 ```
 
+## Claude Patch Validation Pipeline
+
+Use this pipeline when updating Claude Code versions or changing bundle patches.
+
+```bash
+# 1. Typecheck and rebuild dist before using validation scripts.
+pnpm build
+
+# 2. Run focused tests for any patches you touched.
+npx vitest run src/patches/<patch-name>.test.ts
+
+# 3. Validate against a clean Claude Code install and apply the full config.
+ANTHROPIC_API_KEY="$ANTHROPIC_REFLEX_API_KEY" \
+  ~/Projects/dotfiles/bin/validate-claude-patches.sh --version 2.1.120
+
+# 4. For latest-version upgrades, run the real reset/apply flow.
+~/Projects/dotfiles/bin/reset-claude.sh --latest --apply --force
+
+# 5. If reset/apply succeeds or after resolving conflicts, re-run validation
+#    without another reset to verify the currently patched binary.
+ANTHROPIC_API_KEY="$ANTHROPIC_REFLEX_API_KEY" \
+  ~/Projects/dotfiles/bin/validate-claude-patches.sh --version 2.1.120 --skip-reset
+```
+
+Validation expectations:
+
+- `validate-claude-patches.sh` must run smoke tests with `-d`, keep JSON stdout separate from debug stderr, and scan debug logs.
+- A passing run should show baseline smoke `PASS`, patched smoke `PASS`, artifact validation `0 failed`, and exit code `0`.
+- Debug stderr must not contain `Fast mode unavailable`, `attribution header x-anthropic-billing-header`, or `Tool search disabled`.
+- If the validator reports `Not logged in`, pass `ANTHROPIC_API_KEY="$ANTHROPIC_REFLEX_API_KEY"` or restore Claude auth before trusting patch results.
+- If `reset-claude.sh --latest --apply --force` stashes local work and then reports conflicts, resolve conflicts, run `pnpm build:dev`, then finish with `TWEAKCC_CC_INSTALLATION_PATH="$HOME/.local/share/claude/versions/<version>" pnpm start --apply`.
+- Do not trust ad hoc disposable apply checks as the final signal; use the dotfiles validator as the source of truth.
+
 ## Code Style
 
 ### Formatting

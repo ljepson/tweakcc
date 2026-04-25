@@ -13,9 +13,13 @@ import { applySystemPrompts } from './systemPrompts';
 import { applyCustomization } from './index';
 
 const mockReadFile = vi.hoisted(() => vi.fn());
+const mockMkdir = vi.hoisted(() => vi.fn());
+const mockAppendFile = vi.hoisted(() => vi.fn());
 
 vi.mock('node:fs/promises', () => ({
   readFile: mockReadFile,
+  mkdir: mockMkdir,
+  appendFile: mockAppendFile,
 }));
 
 vi.mock('../config', () => ({
@@ -88,6 +92,8 @@ describe('model customization toggle patch conditions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fs.readFile).mockResolvedValue('base-content');
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.appendFile).mockResolvedValue(undefined);
   });
 
   it('skips both model customization patches when disabled', async () => {

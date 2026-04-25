@@ -95,6 +95,7 @@ import {
   writeAutoLaunchVerificationAgent,
   writeVerificationAgentAvailability,
 } from './verificationAgent';
+import { writeContinueResumeCompat212120 } from './compat212120';
 import {
   restoreNativeBinaryFromBackup,
   restoreClijsFromBackup,
@@ -229,6 +230,13 @@ const PATCH_DEFINITIONS = [
     group: PatchGroup.ALWAYS_APPLIED,
     description:
       'The x-anthropic-billing-header attribution header will not be sent',
+  },
+  {
+    id: 'continue-resume-compat-212120',
+    name: '2.1.120 continue-mode compatibility',
+    group: PatchGroup.ALWAYS_APPLIED,
+    description: 'Repairs the broken 2.1.120 continue-mode resume hook stub',
+    supportedVersions: ['2.1.120'],
   },
   // Misc Configurable
   {
@@ -626,6 +634,14 @@ interface PatchImplementation {
   condition?: boolean;
 }
 
+interface PatchLogEntry {
+  id: string;
+  name: string;
+  status: 'applied' | 'failed';
+  matchedOn?: string;
+  replacement?: string;
+}
+
 // =============================================================================
 // Legacy types (for backward compatibility with patchesAppliedIndication)
 // =============================================================================
@@ -652,8 +668,68 @@ const applyPatchImplementations = (
   implementations: Record<PatchId, PatchImplementation>,
   ccVersion?: string,
   patchFilter?: string[] | null
-): { content: string; results: PatchResult[] } => {
+): { content: string; results: PatchResult[]; logEntries: PatchLogEntry[] } => {
   const results: PatchResult[] = [];
+  const logEntries: PatchLogEntry[] = [];
+
+  const formatPatchLogSnippet = (value: string): string => {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+
+    if (normalized.length <= 240) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, 237)}...`;
+  };
+
+  const getPatchChangePreview = (
+    before: string,
+    after: string
+  ): { matchedOn?: string; replacement?: string } => {
+    if (before === after) {
+      return {};
+    }
+
+    let start = 0;
+    while (
+      start < before.length &&
+      start < after.length &&
+      before[start] === after[start]
+    ) {
+      start += 1;
+    }
+
+    let beforeEnd = before.length - 1;
+    let afterEnd = after.length - 1;
+    while (
+      beforeEnd >= start &&
+      afterEnd >= start &&
+      before[beforeEnd] === after[afterEnd]
+    ) {
+      beforeEnd -= 1;
+      afterEnd -= 1;
+    }
+
+    const matchedOn = before.slice(start, beforeEnd + 1);
+    const replacement = after.slice(start, afterEnd + 1);
+    const beforePreview = before.slice(
+      Math.max(0, start - 80),
+      Math.min(before.length, beforeEnd + 81)
+    );
+    const afterPreview = after.slice(
+      Math.max(0, start - 80),
+      Math.min(after.length, afterEnd + 81)
+    );
+
+    return {
+      matchedOn:
+        matchedOn.length > 0 ? formatPatchLogSnippet(beforePreview) : undefined,
+      replacement:
+        replacement.length > 0
+          ? formatPatchLogSnippet(afterPreview)
+          : undefined,
+    };
+  };
 
   // Process patches in the order defined in PATCH_DEFINITIONS
   for (const def of PATCH_DEFINITIONS) {
@@ -712,7 +788,22 @@ const applyPatchImplementations = (
     const applied = !failed && result !== content;
 
     if (!failed) {
+      if (applied) {
+        const preview = getPatchChangePreview(content, result);
+        logEntries.push({
+          id: def.id,
+          name: def.name,
+          status: 'applied',
+          ...preview,
+        });
+      }
       content = result;
+    } else {
+      logEntries.push({
+        id: def.id,
+        name: def.name,
+        status: 'failed',
+      });
     }
 
     results.push({
@@ -725,7 +816,7 @@ const applyPatchImplementations = (
     });
   }
 
-  return { content, results };
+  return { content, results, logEntries };
 };
 
 // =============================================================================
@@ -737,6 +828,39 @@ export const applyCustomization = async (
   ccInstInfo: ClaudeCodeInstallationInfo,
   patchFilter?: string[] | null
 ): Promise<ApplyCustomizationResult> => {
+  const appendPatcherLog = async (
+    entries: PatchLogEntry[],
+    version?: string
+  ): Promise<void> => {
+    if (entries.length === 0) {
+      return;
+    }
+
+    const logPath = path.join(CONFIG_DIR, 'patcher.log');
+    const lines = entries.flatMap(entry => {
+      const base = [
+        `[${new Date().toISOString()}]`,
+        `version=${version ?? 'unknown'}`,
+        `patch=${entry.id}`,
+        `name=${JSON.stringify(entry.name)}`,
+        `status=${entry.status}`,
+      ];
+
+      if (entry.matchedOn) {
+        base.push(`matched=${JSON.stringify(entry.matchedOn)}`);
+      }
+
+      if (entry.replacement) {
+        base.push(`replacement=${JSON.stringify(entry.replacement)}`);
+      }
+
+      return [base.join(' ')];
+    });
+
+    await fs.mkdir(CONFIG_DIR, { recursive: true });
+    await fs.appendFile(logPath, `${lines.join('\n')}\n`, 'utf8');
+  };
+
   let content: string;
   let originalContent = '';
 
@@ -866,6 +990,9 @@ export const applyCustomization = async (
     },
     'suppress-billing-header': {
       fn: c => writeSuppressBillingHeader(c),
+    },
+    'continue-resume-compat-212120': {
+      fn: c => writeContinueResumeCompat212120(c),
     },
     'statusline-update-throttle': {
       fn: c =>
@@ -1177,15 +1304,19 @@ export const applyCustomization = async (
   // ==========================================================================
   // Apply all patches
   // ==========================================================================
-  const { content: patchedContent, results: patchResults } =
-    applyPatchImplementations(
-      content,
-      patchImplementations,
-      ccInstInfo.version,
-      patchFilter
-    );
+  const {
+    content: patchedContent,
+    results: patchResults,
+    logEntries: patchLogEntries,
+  } = applyPatchImplementations(
+    content,
+    patchImplementations,
+    ccInstInfo.version,
+    patchFilter
+  );
   content = patchedContent;
   allResults.push(...patchResults);
+  await appendPatcherLog(patchLogEntries, ccInstInfo.version);
 
   if (
     ccInstInfo.nativeInstallationPath &&

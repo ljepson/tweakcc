@@ -143,6 +143,7 @@ export const ensureConfigDir = async (): Promise<void> => {
           'native-binary.backup',
           'native-claudejs-orig.js',
           'native-claudejs-patched.js',
+          'patcher.log',
           'systemPromptAppliedHashes.json',
           'systemPromptOriginalHashes.json',
           'system-prompts/*.diff.html',

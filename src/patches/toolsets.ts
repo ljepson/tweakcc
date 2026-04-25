@@ -704,8 +704,9 @@ export const writeToolsetComponentDefinition = (
 export const findShiftTabAppStateVarInsertionPoint = (
   oldFile: string
 ): number | null => {
-  const bashModePattern = /\{color:"bashBorder"\},"! for (?:bash|shell) mode"/;
-  const match = oldFile.match(bashModePattern);
+  const bashModePattern = /\{color:"bashBorder"\},"! for (?:bash|shell) mode"/g;
+  const bashModeMatches = Array.from(oldFile.matchAll(bashModePattern));
+  const match = bashModeMatches.at(-1);
 
   if (!match || match.index === undefined) {
     console.error(

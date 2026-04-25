@@ -45,6 +45,7 @@ debug.log
 
 # Scratch files
 .beads/
+.engram/
 plan.md
 state.toolset
 PROJECT_INDEX.md

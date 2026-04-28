@@ -26,7 +26,7 @@ export const writeMicrocompactFallback = (oldFile: string): string | null => {
   const contextHintEnabledPattern =
     /function ([$\w]+)\(\)\{return ([$\w]+)\("tengu_hazel_osprey",!1\)\}/;
   const contextHintReturnPattern =
-    /return E\(`\[CONTEXT_HINT_REJECT\] mc=\$\{!!([$\w]+)\} tokensSaved=\$\{\1\?\.tokensSaved\?\?0\}`\),\{messages:([$\w]+),/;
+    /return ([$\w]+)\(`\[CONTEXT_HINT_REJECT\] mc=\$\{!!([$\w]+)\} tokensSaved=\$\{\2\?\.tokensSaved\?\?0\}`\),\{messages:([$\w]+),/;
   const contextHintEnabledMatch = oldFile.match(contextHintEnabledPattern);
   const contextHintReturnMatch = oldFile.match(contextHintReturnPattern);
 
@@ -51,7 +51,7 @@ export const writeMicrocompactFallback = (oldFile: string): string | null => {
       return null;
     }
 
-    const resultVar = returnMatchAfterEnable[2];
+    const resultVar = returnMatchAfterEnable[3];
     const returnReplacement = returnMatchAfterEnable[0].replace(
       `messages:${resultVar},`,
       `messages:[...${resultVar},${nudgeObj}],`

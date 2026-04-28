@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { writeEngramMemoryBridge } from './engramMemoryBridge';
 
 // 2.1.89-era identifiers
@@ -101,10 +101,9 @@ describe('engramMemoryBridge', () => {
     );
   });
 
-  it('returns null when the auto-memory gate is absent', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const result = writeEngramMemoryBridge('function nope(){}');
-    expect(result).toBeNull();
-    vi.restoreAllMocks();
+  it('returns unchanged when the auto-memory gate is absent', () => {
+    const input = 'function nope(){}';
+    const result = writeEngramMemoryBridge(input);
+    expect(result).toBe(input);
   });
 });

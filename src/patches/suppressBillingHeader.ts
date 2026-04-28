@@ -3,7 +3,7 @@
 import { showDiff } from './index';
 
 export const writeSuppressBillingHeader = (file: string): string | null => {
-  const pattern = /return E\(`attribution header \$\{([$\w]+)\}`\),\1/;
+  const pattern = /return ([$\w]+)\(`attribution header \$\{([$\w]+)\}`\),\2/;
 
   const match = file.match(pattern);
   if (!match || match.index === undefined) {

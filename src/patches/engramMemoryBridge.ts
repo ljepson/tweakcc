@@ -27,10 +27,7 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
     (!permissionMatch || permissionMatch.index === undefined) &&
     (!permissionMatch2 || permissionMatch2.index === undefined)
   ) {
-    console.error(
-      'patch: engramMemoryBridge: failed to find auto-memory permission gate'
-    );
-    return null;
+    return oldFile;
   }
 
   let afterPermissionFile = oldFile;

@@ -44,9 +44,6 @@ const getLineNumberFormatterLocation = (
     );
 
   if (!matched) {
-    console.error(
-      'patch: suppressLineNumbers: failed to find line number formatter pattern'
-    );
     return null;
   }
   const { match, newCode } = matched;
@@ -63,7 +60,7 @@ const getLineNumberFormatterLocation = (
 export const writeSuppressLineNumbers = (oldFile: string): string | null => {
   const location = getLineNumberFormatterLocation(oldFile);
   if (!location) {
-    return null;
+    return oldFile;
   }
 
   const newFile =

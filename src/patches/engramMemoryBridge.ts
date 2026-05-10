@@ -37,8 +37,13 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
       permissionMatch2) as RegExpMatchArray & {
       index: number;
     };
-    const [permissionNeedle, allowWrites, toolVar, inputVar, denyTail] =
-      permissionGroups;
+    const permissionNeedle = permissionGroups[0];
+    const allowWrites = permissionGroups[1];
+    const toolVar = permissionGroups[2];
+    const inputVar = permissionMatch ? permissionGroups[3] : 'q';
+    const denyTail = permissionMatch
+      ? permissionGroups[4]
+      : permissionGroups[3];
     const permissionIndex = permissionGroups.index;
     const modifiedLastPart =
       `if(${toolVar}.name==="mcp__engram__engram_store"&&typeof ${inputVar}==="object"&&${inputVar}!==null){let t=${inputVar}.entry_type,p=${inputVar}.project_name,l=${inputVar}.title,c=${inputVar}.content;if((t==="decision"||t==="discovery"||t==="lesson"||t==="diagnostic")&&typeof p==="string"&&typeof l==="string"&&typeof c==="string")return{behavior:"allow",updatedInput:${inputVar}};return {behavior:"deny",message:"Only structured Engram saves are allowed",decisionReason:{type:"other",reason:"Only structured Engram saves are allowed"}}}` +

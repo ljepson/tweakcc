@@ -356,6 +356,13 @@ export const findBoxComponent = (fileContents: string): string | undefined => {
     return directReturnMatch[1];
   }
 
+  const restPropsReturnPattern =
+    /function ([$\w]+)\(\{children:[$\w]+,[^)]*\.\.\.[$\w]+\}\)\{.{0,2000}\.createElement\("ink-box"/;
+  const restPropsReturnMatch = fileContents.match(restPropsReturnPattern);
+  if (restPropsReturnMatch) {
+    return restPropsReturnMatch[1];
+  }
+
   // Method 3: Search for Box displayName (older CC versions, 0.2.9 - 2.0.77 at least)
   const boxDisplayNamePattern = /[^$\w]([$\w]+)\.displayName="Box"/;
   const boxDisplayNameMatch = fileContents.match(boxDisplayNamePattern);

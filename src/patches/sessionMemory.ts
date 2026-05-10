@@ -39,19 +39,37 @@ const patchExtraction = (file: string): string | null => {
   const pattern = /function [$\w]+\(\)\{return [$\w]+\("tengu_session_memory"/;
   const match = file.match(pattern);
 
-  if (!match || match.index === undefined) {
-    console.error('patch: sessionMemory: failed to find extraction gate');
-    return null;
+  if (match && match.index !== undefined) {
+    const insertIndex = match.index + match[0].indexOf('{') + 1;
+    const insertion = 'return true;';
+
+    const newFile =
+      file.slice(0, insertIndex) + insertion + file.slice(insertIndex);
+
+    showDiff(file, newFile, insertion, insertIndex, insertIndex);
+    return newFile;
   }
 
-  const insertIndex = match.index + match[0].indexOf('{') + 1;
-  const insertion = 'return true;';
+  const passportPattern = /if\(![$\w]+\("tengu_passport_quail",!1\)\)return;/;
+  const passportMatch = file.match(passportPattern);
 
-  const newFile =
-    file.slice(0, insertIndex) + insertion + file.slice(insertIndex);
+  if (passportMatch && passportMatch.index !== undefined) {
+    const newFile =
+      file.slice(0, passportMatch.index) +
+      file.slice(passportMatch.index + passportMatch[0].length);
 
-  showDiff(file, newFile, insertion, insertIndex, insertIndex);
-  return newFile;
+    showDiff(
+      file,
+      newFile,
+      '',
+      passportMatch.index,
+      passportMatch.index + passportMatch[0].length
+    );
+    return newFile;
+  }
+
+  console.error('patch: sessionMemory: failed to find extraction gate');
+  return null;
 };
 
 /**
@@ -119,8 +137,7 @@ const patchTokenLimits = (file: string): string | null => {
   const match = file.match(pattern);
 
   if (!match || match.index === undefined) {
-    console.error('patch: sessionMemory: failed to find token limits pattern');
-    return null;
+    return file;
   }
 
   const perSectionCode = 'Number(process.env.CC_SM_PER_SECTION_TOKENS??2000)';
@@ -167,10 +184,7 @@ const patchUpdateThresholds = (file: string): string | null => {
 
   // Check if any replacements were made
   if (newFile === file) {
-    console.error(
-      'patch: sessionMemory: failed to find update thresholds patterns'
-    );
-    return null;
+    return file;
   }
 
   return newFile;

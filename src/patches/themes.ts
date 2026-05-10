@@ -5,7 +5,7 @@ import { LocationResult, showDiff } from './index';
 
 function getThemesLocation(oldFile: string): {
   switchStatement: LocationResult;
-  objArr: LocationResult;
+  objArr?: LocationResult;
   obj: LocationResult;
 } | null {
   // Look for switch statement pattern: switch(A){case"light":return ...;}
@@ -32,11 +32,6 @@ function getThemesLocation(oldFile: string): {
     );
   const objMatch = oldFile.match(objPat);
 
-  if (!objArrMatch || objArrMatch.index == undefined) {
-    console.error('patch: themes: failed to find objArrMatch');
-    return null;
-  }
-
   if (!objMatch || objMatch.index == undefined) {
     console.error('patch: themes: failed to find objMatch');
     return null;
@@ -48,10 +43,13 @@ function getThemesLocation(oldFile: string): {
       endIndex: switchMatch.index + switchMatch[0].length,
       identifiers: [switchMatch[1].trim()],
     },
-    objArr: {
-      startIndex: objArrMatch.index,
-      endIndex: objArrMatch.index + objArrMatch[0].length,
-    },
+    objArr:
+      objArrMatch && objArrMatch.index !== undefined
+        ? {
+            startIndex: objArrMatch.index,
+            endIndex: objArrMatch.index + objArrMatch[0].length,
+          }
+        : undefined,
     obj: {
       startIndex: objMatch.index,
       endIndex: objMatch.index + objMatch[0].length,
@@ -102,22 +100,23 @@ export const writeThemes = (
   );
   oldFile = newFile;
 
-  // Update theme options array (objArr)
-  const objArr = JSON.stringify(
-    themes.map(theme => ({ label: theme.name, value: theme.id }))
-  );
-  newFile =
-    newFile.slice(0, locations.objArr.startIndex) +
-    objArr +
-    newFile.slice(locations.objArr.endIndex);
-  showDiff(
-    oldFile,
-    newFile,
-    objArr,
-    locations.objArr.startIndex,
-    locations.objArr.endIndex
-  );
-  oldFile = newFile;
+  if (locations.objArr) {
+    const objArr = JSON.stringify(
+      themes.map(theme => ({ label: theme.name, value: theme.id }))
+    );
+    newFile =
+      newFile.slice(0, locations.objArr.startIndex) +
+      objArr +
+      newFile.slice(locations.objArr.endIndex);
+    showDiff(
+      oldFile,
+      newFile,
+      objArr,
+      locations.objArr.startIndex,
+      locations.objArr.endIndex
+    );
+    oldFile = newFile;
+  }
 
   // Update switch statement
   let switchStatement = `switch(${locations.switchStatement.identifiers?.[0]}){\n`;

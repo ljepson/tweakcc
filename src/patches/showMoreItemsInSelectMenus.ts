@@ -165,10 +165,6 @@ export const writeShowMoreItemsInSelectMenus = (
   const heightPatched = patchHelpMenuHeight(newFile);
   if (heightPatched) {
     newFile = heightPatched;
-  } else {
-    console.error(
-      'patch: writeShowMoreItemsInSelectMenus: failed to find help menu height pattern'
-    );
   }
 
   // Also patch the visibleCount formula in Commands.tsx
@@ -177,10 +173,6 @@ export const writeShowMoreItemsInSelectMenus = (
   const visibleCountPatched = patchCommandsVisibleCount(newFile);
   if (visibleCountPatched) {
     newFile = visibleCountPatched;
-  } else {
-    console.error(
-      'patch: writeShowMoreItemsInSelectMenus: failed to find visibleCount pattern'
-    );
   }
 
   // Also patch the slash command autocomplete suggestions cap
@@ -189,10 +181,6 @@ export const writeShowMoreItemsInSelectMenus = (
   const suggestionsPatched = patchSuggestionsCap(newFile);
   if (suggestionsPatched) {
     newFile = suggestionsPatched;
-  } else {
-    console.error(
-      'patch: writeShowMoreItemsInSelectMenus: failed to find suggestions cap pattern'
-    );
   }
 
   return newFile;

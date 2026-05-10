@@ -25,11 +25,22 @@ let config={minimumMessageTokensToInit:1e4,minimumTokensBetweenUpdate:5000,toolC
 =2000=12000# Session Title
 `;
 
+// CC >=2.1.138 bundle mock with the renamed auto-memory extraction gate
+const mockBundle138 = `
+async function Y(f,O){if(f.toolUseContext.agentId)return;if(!J$("tengu_passport_quail",!1))return;if(!E9())return;if(k6())return;}
+if(!J$("tengu_coral_fern",!1))return[];
+`;
+
 describe('writeSessionMemory', () => {
   describe('extraction patch', () => {
     it('should bypass tengu_session_memory flag check', () => {
       const result = writeSessionMemory(mockBundleOld);
       expect(result).toContain('return true;');
+    });
+
+    it('should bypass tengu_passport_quail extraction gate', () => {
+      const result = writeSessionMemory(mockBundle138);
+      expect(result).not.toContain('if(!J$("tengu_passport_quail",!1))return;');
     });
 
     it('should return null if extraction gate not found', () => {

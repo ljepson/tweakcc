@@ -82,10 +82,22 @@ export const writeAllowCustomAgentModels = (file: string): string | null => {
     return legacyResult;
   }
 
+  const validPatternAny =
+    /let\s+[$\w]+\s*=\s*([$\w]+)\s*&&\s*typeof\s+\1\s*===\s*"string"\s*&&\s*[$\w]+\.includes\(\1\)/;
+  const legacyZodPattern = /,model:[$\w]+\.enum\([$\w]+\)\.optional\(\)/;
   const schemaPattern =
     /model:([$\w]+)\.enum\(\[(?:"sonnet"|'sonnet'),(?:"opus"|'opus'),(?:"haiku"|'haiku')\]\)\.optional\(\)/;
   const schemaMatch = file.match(schemaPattern);
   if (!schemaMatch || schemaMatch.index === undefined) {
+    if (file.match(legacyZodPattern)) {
+      console.error(
+        'patch: allowCustomAgentModels: failed to find model validation flag pattern'
+      );
+      return null;
+    }
+    if (!file.match(validPatternAny)) {
+      return file;
+    }
     console.error(
       'patch: allowCustomAgentModels: failed to find Zod enum pattern'
     );

@@ -35,8 +35,6 @@ import { showDiff } from './index';
  * call to the accept handler function, bypassing the approval UI.
  */
 export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
-  // First, find the accept handler function name by looking at the onChange handler
-  // near "Ready to code?". The pattern is: onChange:(X)=>FUNC(X),onCancel
   const readyIdx = oldFile.indexOf('title:"Ready to code?"');
   if (readyIdx === -1) {
     console.error(
@@ -45,38 +43,38 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
     return null;
   }
 
-  // Look for onChange handler after Ready to code
   const afterReady = oldFile.slice(readyIdx, readyIdx + 3000);
 
-  // CC <2.1.87: onChange:(X)=>FUNC(X),onCancel
   const onChangeMatch1 = afterReady.match(
     /onChange:\([$\w]+\)=>([$\w]+)\([$\w]+\),onCancel/
   );
-  // CC 2.1.87+: onChange:FUNC,onCancel (direct ref, not lambda)
   const onChangeMatch2 = afterReady.match(/onChange:([$\w]+),onCancel/);
+  const onChangeMatch3 = afterReady.match(
+    /onChange:\([$\w]+\)=>void ([$\w]+)\.current\([$\w]+\),onCancel/
+  );
 
-  const onChangeMatch = onChangeMatch1 ?? onChangeMatch2;
-  if (!onChangeMatch) {
+  const acceptFuncName = onChangeMatch1
+    ? onChangeMatch1[1]
+    : onChangeMatch2
+      ? onChangeMatch2[1]
+      : onChangeMatch3
+        ? `${onChangeMatch3[1]}.current`
+        : null;
+
+  if (!acceptFuncName) {
     console.error('patch: autoAcceptPlanMode: failed to find onChange handler');
     return null;
   }
 
-  const acceptFuncName = onChangeMatch[1];
-
-  // Check if already patched (with any function name)
   const alreadyPatchedPattern = new RegExp(
-    `[$\\w]+\\("yes-accept-edits"\\);return null;return`
+    `[$\\w]+(?:\\.current)?\\("yes-accept-edits"\\);return null;return`
   );
   if (alreadyPatchedPattern.test(oldFile)) {
     return oldFile;
   }
 
-  // Match the end of the "Exit plan mode?" conditional and the start of
-  // the "Ready to code?" return.
-  // CC <2.1.87: ...}}))));return REACT.createElement(REACT.Fragment,null,...planMode...
   const pattern1 =
     /(\}\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+\.default\.Fragment,null,[$\w]+\.default\.createElement\([$\w]+,\{color:"planMode",title:"Ready to code\?")/;
-  // CC 2.1.87+: ...}}))));return REACT.createElement(BOX,{flexDirection:"column",tabIndex:0,...planMode...
   const pattern2 =
     /(\}\}\)\)\)\);)(return [$\w]+\.default\.createElement\([$\w]+,\{flexDirection:"column",tabIndex:0,autoFocus:!0,onKeyDown:[$\w]+\},[$\w]+\.default\.createElement\([$\w]+,\{color:"planMode",title:"Ready to code\?")/;
 
@@ -88,9 +86,6 @@ export const writeAutoAcceptPlanMode = (oldFile: string): string | null => {
     return null;
   }
 
-  // Insert auto-accept call between the if(Q) block and the return
-  // The accept function triggers the accept flow with "yes-accept-edits"
-  // return null prevents rendering the UI (component will unmount after state change)
   const insertion = `${acceptFuncName}("yes-accept-edits");return null;`;
   const replacement = match[1] + insertion + match[2];
 

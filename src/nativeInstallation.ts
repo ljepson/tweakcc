@@ -1469,10 +1469,11 @@ function repackELFSection(
       rwVaddrStart,
       BigInt(BLOB_HEADER_ALIGNMENT)
     );
+    const lastCandidate = rwVaddrStart + BigInt(rwContent.length) - 8n;
 
     for (
       let va = firstAligned;
-      va < rwVaddrStart + BigInt(rwContent.length) - 8n;
+      va <= lastCandidate;
       va += BigInt(BLOB_HEADER_ALIGNMENT)
     ) {
       const off = Number(va - rwVaddrStart);

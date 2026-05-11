@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   writeToolsetFieldToAppState,
   appendToolsetToModeDisplay,
+  insertShiftTabAppStateVar,
 } from './toolsets';
 // import type { Toolset } from '../types';
 
@@ -89,6 +90,56 @@ describe('appendToolsetToModeDisplay', () => {
     const result = appendToolsetToModeDisplay(input);
     expect(result).toBeNull();
     vi.restoreAllMocks();
+  });
+});
+
+describe('insertShiftTabAppStateVar', () => {
+  it('inserts currentToolset into the same component as the mode display', () => {
+    const input =
+      'useAppState function w$(selector){return React.useSyncExternalStore(a,b,selector)} function c6(){return store().setState}' +
+      'function rI4(H){let $=cache.c(1),{mode:wH}=H;return fn(wH).toLowerCase()," on"}' +
+      'function kp5(H){return {color:"bashBorder"},"! for bash mode"}';
+
+    const result = insertShiftTabAppStateVar(input, 'SUDO', '2.1.138');
+
+    expect(result).not.toBeNull();
+    expect(result).toContain(
+      'function rI4(H){/*twkcc:ts-stln:2.1.138*/let currentToolset=w$(state => state.toolset) ?? "SUDO";let $=cache.c(1)'
+    );
+    expect(result).toContain(
+      'function kp5(H){return {color:"bashBorder"},"! for bash mode"}'
+    );
+  });
+
+  it('does not treat an out-of-scope existing sentinel as already applied', () => {
+    const input =
+      'useAppState function w$(selector){return React.useSyncExternalStore(a,b,selector)} function c6(){return store().setState}' +
+      'function rI4(H){let $=cache.c(1),{mode:wH}=H;return fn(wH).toLowerCase()," on"}' +
+      'function kp5(H){/*twkcc:ts-stln:2.1.138*/let currentToolset=w$(state => state.toolset) ?? "SUDO";return {color:"bashBorder"},"! for bash mode"}';
+
+    const result = insertShiftTabAppStateVar(input, 'SUDO', '2.1.138');
+
+    expect(result).not.toBeNull();
+    expect(result).toContain(
+      'function rI4(H){/*twkcc:ts-stln:2.1.138*/let currentToolset=w$(state => state.toolset) ?? "SUDO";let $=cache.c(1)'
+    );
+    expect(result).toContain(
+      'function kp5(H){/*twkcc:ts-stln:2.1.138*/let currentToolset=w$(state => state.toolset) ?? "SUDO";return {color:"bashBorder"},"! for bash mode"}'
+    );
+  });
+
+  it('can repair an already mode-patched bundle with the sentinel out of scope', () => {
+    const input =
+      'useAppState function w$(selector){return React.useSyncExternalStore(a,b,selector)} function c6(){return store().setState}' +
+      'function rI4(H){let $=cache.c(1),{mode:wH}=H;return /*twkcc:ts-mode:2.1.138*/fn(wH).toLowerCase(),currentToolset?` on [${currentToolset}]`:""}' +
+      'function kp5(H){/*twkcc:ts-stln:2.1.138*/let currentToolset=w$(state => state.toolset) ?? "SUDO";return {color:"bashBorder"},"! for bash mode"}';
+
+    const result = insertShiftTabAppStateVar(input, 'SUDO', '2.1.138');
+
+    expect(result).not.toBeNull();
+    expect(result).toContain(
+      'function rI4(H){/*twkcc:ts-stln:2.1.138*/let currentToolset=w$(state => state.toolset) ?? "SUDO";let $=cache.c(1)'
+    );
   });
 });
 

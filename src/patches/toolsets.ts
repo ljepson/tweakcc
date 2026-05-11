@@ -17,6 +17,10 @@ import { Toolset } from '../types';
 // UTILITY FUNCTIONS - Variable Discovery
 // ============================================================================
 
+const MODE_DISPLAY_PATTERN = /([$\w]+)\(([$\w]+)\)\.toLowerCase\(\)," on"/;
+const PATCHED_MODE_DISPLAY_PATTERN =
+  /\/\*twkcc:ts-mode:[^*]+\*\/[$\w]+\([$\w]+\)\.toLowerCase\(\),currentToolset\?/;
+
 /**
  * Find Select component using function signature pattern
  */
@@ -704,25 +708,20 @@ export const writeToolsetComponentDefinition = (
 export const findShiftTabAppStateVarInsertionPoint = (
   oldFile: string
 ): number | null => {
-  const bashModePattern = /\{color:"bashBorder"\},"! for (?:bash|shell) mode"/g;
-  const bashModeMatches = Array.from(oldFile.matchAll(bashModePattern));
-  const match = bashModeMatches.at(-1);
+  const match =
+    oldFile.match(MODE_DISPLAY_PATTERN) ??
+    oldFile.match(PATCHED_MODE_DISPLAY_PATTERN);
 
   if (!match || match.index === undefined) {
     console.error(
-      'patch: toolsets: findShiftTabAppStateVarInsertionPoint: failed to find bash mode pattern'
+      'patch: toolsets: findShiftTabAppStateVarInsertionPoint: failed to find mode display pattern'
     );
     return null;
   }
 
-  // Get 10000 chars before the match
-  // where earlier patches push the function declaration further away)
-  const lookbackStart = Math.max(0, match.index - 10000);
+  const lookbackStart = Math.max(0, match.index - 12000);
   const chunk = oldFile.slice(lookbackStart, match.index);
 
-  // Find the function declaration pattern - handles both:
-  // - function NAME({...}){ (older CC, destructured params)
-  // - function NAME(T){ (CC 2.1.20+, single param destructured in body)
   const functionPattern = /function ([$\w]+)\((?:\{[^}]+\}|[$\w]+)\)\{/g;
   const matches = Array.from(chunk.matchAll(functionPattern));
 
@@ -733,7 +732,6 @@ export const findShiftTabAppStateVarInsertionPoint = (
     return null;
   }
 
-  // Take the last match (closest to the bash mode indicator)
   const lastMatch = matches[matches.length - 1];
   if (lastMatch.index === undefined) {
     console.error(
@@ -742,7 +740,6 @@ export const findShiftTabAppStateVarInsertionPoint = (
     return null;
   }
 
-  // Return position AFTER the opening brace
   return lookbackStart + lastMatch.index + lastMatch[0].length;
 };
 
@@ -755,16 +752,24 @@ export const insertShiftTabAppStateVar = (
   defaultToolset: string | null,
   ccVersion?: string
 ): string | null => {
-  if (isAlreadyApplied(oldFile, 'ts-stln', 'let currentToolset=')) {
-    return oldFile;
-  }
-
   const insertionPoint = findShiftTabAppStateVarInsertionPoint(oldFile);
   if (insertionPoint === null) {
     console.error(
       'patch: toolsets: insertShiftTabAppStateVar: failed to find insertion point'
     );
     return null;
+  }
+
+  const existingScopedPatch = oldFile.slice(
+    insertionPoint,
+    insertionPoint + 200
+  );
+  if (
+    existingScopedPatch
+      .trimStart()
+      .startsWith(`${mkSentinel('ts-stln', ccVersion)}let currentToolset=`)
+  ) {
+    return oldFile;
   }
 
   const stateInfo = getAppStateSelectorAndUseState(oldFile);
@@ -806,8 +811,7 @@ export const appendToolsetToModeDisplay = (
   // Looking for: tl(Y).toLowerCase(), " on"
   // We want to change it to: tl(Y).toLowerCase(), " on: ", currentToolset || "undefined"
 
-  const modeDisplayPattern = /([$\w]+)\(([$\w]+)\)\.toLowerCase\(\)," on"/;
-  const match = oldFile.match(modeDisplayPattern);
+  const match = oldFile.match(MODE_DISPLAY_PATTERN);
 
   if (!match || match.index === undefined) {
     console.error(

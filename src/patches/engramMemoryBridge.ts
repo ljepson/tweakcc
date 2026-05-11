@@ -2,11 +2,15 @@
 
 import { showDiff } from './index';
 
+const ENGRAM_STORE_TOOL = 'mcp__engram__engram_store';
+const LEGACY_ENGRAM_PROMPT =
+  'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.';
+const ENGRAM_BRIDGE_PROMPT =
+  'mcp__engram__engram_store is available for durable cross-session memory. When any recent message contains a decision, discovery, lesson, or diagnostic worth saving, you MUST call mcp__engram__engram_store exactly once for each durable item with entry_type, project_name, title, content, and optional tags. Use project_name from the active project or cwd. Continue local memory file updates only when they add value.';
+
 export const writeEngramMemoryBridge = (oldFile: string): string | null => {
-  const hasEngramPermission = oldFile.includes('mcp__engram__engram_store');
-  const hasEngramPrompt = oldFile.includes(
-    'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
-  );
+  const hasEngramPermission = oldFile.includes(ENGRAM_STORE_TOOL);
+  const hasEngramPrompt = oldFile.includes(ENGRAM_BRIDGE_PROMPT);
   const hasEngramGate = oldFile.includes(
     'c.name==="engram"&&c.type==="connected"'
   );
@@ -83,16 +87,18 @@ export const writeEngramMemoryBridge = (oldFile: string): string | null => {
   let afterPromptFile = afterPermissionFile;
   const promptNeedle = promptMatch?.[0];
   if (!hasEngramPrompt && promptNeedle) {
-    let promptReplacement = promptNeedle.replace(
-      'All other tools \\u2014 MCP, Agent',
-      'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages. All other tools \\u2014 other MCP tools, Agent'
-    );
+    let promptReplacement = promptNeedle.includes(LEGACY_ENGRAM_PROMPT)
+      ? promptNeedle.replace(LEGACY_ENGRAM_PROMPT, ENGRAM_BRIDGE_PROMPT)
+      : promptNeedle.replace(
+          'All other tools \\u2014 MCP, Agent',
+          `${ENGRAM_BRIDGE_PROMPT} All other tools \\u2014 other MCP tools, Agent`
+        );
 
     if (promptReplacement === promptNeedle) {
       promptReplacement = promptNeedle
         .replace(
           'rm is not permitted.',
-          'rm is not permitted. mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
+          `rm is not permitted. ${ENGRAM_BRIDGE_PROMPT}`
         )
         .replace('MCP, Agent', 'other MCP tools, Agent');
     }

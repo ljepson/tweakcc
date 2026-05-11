@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { writeEngramMemoryBridge } from './engramMemoryBridge';
 
+const durableEngramPrompt =
+  'mcp__engram__engram_store is available for durable cross-session memory. When any recent message contains a decision, discovery, lesson, or diagnostic worth saving, you MUST call mcp__engram__engram_store exactly once for each durable item with entry_type, project_name, title, content, and optional tags. Use project_name from the active project or cwd. Continue local memory file updates only when they add value.';
+const legacyEngramPrompt =
+  'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.';
+
 // 2.1.89-era identifiers
 const mockAutoMemSnippet_2_1_89 =
   'function uF$(H){return async($,q)=>{if($.name===eJ)return{behavior:"allow",updatedInput:q};if($.name===Iq||$.name===i4||$.name===e9)return{behavior:"allow",updatedInput:q};if($.name===zq){let K=$.inputSchema.safeParse(q);if(K.success&&$.isReadOnly(K.data))return{behavior:"allow",updatedInput:q};return $_7($,"Only read-only shell commands are permitted in this context (ls, find, grep, cat, stat, wc, head, tail, and similar)")}if(($.name===MK||$.name===H_)&&"file_path" in q){let K=q.file_path;if(typeof K==="string"&&Y8H(K))return{behavior:"allow",updatedInput:q}}return $_7($,`only ${Iq}, ${i4}, ${e9}, read-only ${zq}, and ${MK}/${H_} within ${H} are allowed`)}}' +
@@ -37,9 +42,7 @@ describe('engramMemoryBridge', () => {
     const result = writeEngramMemoryBridge(mockAutoMemSnippet);
 
     expect(result).not.toBeNull();
-    expect(result).toContain(
-      'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
-    );
+    expect(result).toContain(durableEngramPrompt);
   });
 
   it('gates extraction on a connected engram MCP client', () => {
@@ -59,7 +62,7 @@ describe('engramMemoryBridge', () => {
       )
       .replace(
         'All other tools \\u2014 MCP, Agent, write-capable ${zq}, etc \\u2014 will be denied.',
-        'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages. All other tools \\u2014 other MCP tools, Agent, write-capable ${zq}, etc \\u2014 will be denied.'
+        `${durableEngramPrompt} All other tools \\u2014 other MCP tools, Agent, write-capable \${zq}, etc \\u2014 will be denied.`
       )
       .replace(
         'if(!n4())return;if(A_())return;',
@@ -67,6 +70,29 @@ describe('engramMemoryBridge', () => {
       );
 
     expect(writeEngramMemoryBridge(alreadyPatched)).toBe(alreadyPatched);
+  });
+
+  it('upgrades legacy permissive prompt text to a durable Engram directive', () => {
+    const legacyPatched = mockAutoMemSnippet
+      .replace(
+        'return $_7($,`only ${Iq}, ${i4}, ${e9}, read-only ${zq}, and ${MK}/${H_} within ${H} are allowed`)}}',
+        'if($.name==="mcp__engram__engram_store"&&typeof q==="object"&&q!==null){let t=q.entry_type,p=q.project_name,l=q.title,c=q.content;if((t==="decision"||t==="discovery"||t==="lesson"||t==="diagnostic")&&typeof p==="string"&&typeof l==="string"&&typeof c==="string")return{behavior:"allow",updatedInput:q};return {behavior:"deny",message:"Only structured Engram saves are allowed",decisionReason:{type:"other",reason:"Only structured Engram saves are allowed"}}}return $_7($,`only ${Iq}, ${i4}, ${e9}, read-only ${zq}, and ${MK}/${H_} within ${H} and mcp__engram__engram_store are allowed`)}}'
+      )
+      .replace(
+        'All other tools \\u2014 MCP, Agent, write-capable ${zq}, etc \\u2014 will be denied.',
+        `${legacyEngramPrompt} All other tools \\u2014 other MCP tools, Agent, write-capable \${zq}, etc \\u2014 will be denied.`
+      )
+      .replace(
+        'if(!n4())return;if(A_())return;',
+        'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!n4())return;if(A_())return;'
+      );
+
+    const result = writeEngramMemoryBridge(legacyPatched);
+
+    expect(result).not.toBeNull();
+    expect(result).not.toBe(legacyPatched);
+    expect(result).toContain(durableEngramPrompt);
+    expect(result).not.toContain(legacyEngramPrompt);
   });
 
   it('patches 2.1.92 identifiers correctly', () => {
@@ -77,9 +103,7 @@ describe('engramMemoryBridge', () => {
     expect(result).toContain('$.name==="mcp__engram__engram_store"');
     expect(result).toContain('and mcp__engram__engram_store are allowed');
     // Prompt
-    expect(result).toContain(
-      'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
-    );
+    expect(result).toContain(durableEngramPrompt);
     // Gate uses captured param name, not hardcoded O
     expect(result).toContain(
       'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!e4())return;if(L_())return;'
@@ -93,9 +117,7 @@ describe('engramMemoryBridge', () => {
     expect(result).toContain('$.name==="mcp__engram__engram_store"');
     expect(result).toContain('Only structured Engram saves are allowed');
     expect(result).toContain('and mcp__engram__engram_store are allowed');
-    expect(result).toContain(
-      'mcp__engram__engram_store is also allowed for structured decision/discovery/lesson/diagnostic memories from the recent messages.'
-    );
+    expect(result).toContain(durableEngramPrompt);
     expect(result).toContain(
       'if(!O.toolUseContext.getAppState().mcp.clients.some(c=>c.name==="engram"&&c.type==="connected"))return;if(!K9())return;if(q_())return;'
     );

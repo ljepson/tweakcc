@@ -3,69 +3,63 @@
 import { LocationResult, showDiff } from './index';
 
 const getStartupBannerLocation = (oldFile: string): LocationResult | null => {
-  // CC <2.1.87: Find the createElement with isBeforeFirstMessage:!1
-  const pattern1 =
+  // CC <2.1.83: Find the createElement with isBeforeFirstMessage:!1
+  const pattern =
     /,[$\w]+\.createElement\([$\w]+,\{isBeforeFirstMessage:!1\}\),/;
-  const match1 = oldFile.match(pattern1);
+  const match = oldFile.match(pattern);
 
-  if (match1 && match1.index !== undefined) {
+  if (match && match.index !== undefined) {
     return {
-      startIndex: match1.index,
-      endIndex: match1.index + match1[0].length,
+      startIndex: match.index,
+      endIndex: match.index + match[0].length,
     };
   }
 
-  // CC 2.1.87+: Find the welcome/banner component function by its
-  // "Welcome to Claude Code" string and Apple_Terminal branch.
-  // Pattern: function NAME(){...Apple_Terminal...Welcome to Claude Code...}
-  const pattern2 =
-    /function ([$\w]+)\(\)\{let [$\w]+=[$\w]+\.[$\w]+\(\d+\).{0,200}Apple_Terminal.{0,200}Welcome to Claude Code/;
-  const match2 = oldFile.match(pattern2);
+  return null;
+};
 
-  if (match2 && match2.index !== undefined) {
-    // Return the position right after the opening brace for injection
-    const braceIdx = match2.index + match2[0].indexOf('{');
-    return {
-      startIndex: braceIdx + 1,
-      endIndex: braceIdx + 1,
-    };
+export const writeHideStartupBanner = (oldFile: string): string | null => {
+  const location = getStartupBannerLocation(oldFile);
+  if (location) {
+    const newFile =
+      oldFile.slice(0, location.startIndex) +
+      ',' +
+      oldFile.slice(location.endIndex);
+    showDiff(oldFile, newFile, ',', location.startIndex, location.endIndex);
+    return newFile;
+  }
+
+  // Idempotency: if the function body already starts with "return null;let"
+  // (from a prior patch), the pattern won't match and we return null to signal
+  // the patch is already applied.  Also handle the explicit check for clarity.
+  if (/function [$\w]+\(\)\{return null;let/.test(oldFile)) {
+    return null;
+  }
+
+  // CC >=2.1.83: The startup banner is a standalone zero-arg component function.
+  // It contains both "Apple_Terminal" (for theme branching) and "Welcome to Claude Code".
+  // Insert `return null;` at the start of its body.
+  const funcPattern = /(function ([$\w]+)\(\)\{)(?=[^}]{0,500}Apple_Terminal)/g;
+
+  let funcMatch: RegExpExecArray | null;
+  while ((funcMatch = funcPattern.exec(oldFile)) !== null) {
+    // Verify this function also contains "Welcome to Claude Code"
+    const bodyStart = funcMatch.index + funcMatch[0].length;
+    const bodyPreview = oldFile.slice(bodyStart, bodyStart + 5000);
+    if (bodyPreview.includes('Welcome to Claude Code')) {
+      const insertIndex = bodyStart;
+      const insertion = 'return null;';
+
+      const newFile =
+        oldFile.slice(0, insertIndex) + insertion + oldFile.slice(insertIndex);
+
+      showDiff(oldFile, newFile, insertion, insertIndex, insertIndex);
+      return newFile;
+    }
   }
 
   console.error(
     'patch: hideStartupBanner: failed to find startup banner component'
   );
   return null;
-};
-
-export const writeHideStartupBanner = (oldFile: string): string | null => {
-  const location = getStartupBannerLocation(oldFile);
-  if (!location) {
-    return null;
-  }
-
-  if (location.startIndex === location.endIndex) {
-    // CC 2.1.87+: inject return null at function body start
-    const insertion = 'return null;';
-    const newFile =
-      oldFile.slice(0, location.startIndex) +
-      insertion +
-      oldFile.slice(location.endIndex);
-    showDiff(
-      oldFile,
-      newFile,
-      insertion,
-      location.startIndex,
-      location.endIndex
-    );
-    return newFile;
-  }
-
-  // CC <2.1.87: remove the element
-  const newFile =
-    oldFile.slice(0, location.startIndex) +
-    ',' +
-    oldFile.slice(location.endIndex);
-
-  showDiff(oldFile, newFile, ',', location.startIndex, location.endIndex);
-  return newFile;
 };

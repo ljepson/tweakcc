@@ -292,56 +292,26 @@ export const clearCaches = (): void => {
  * Find the Text component variable name from Ink
  */
 export const findTextComponent = (fileContents: string): string | undefined => {
-  // Method 1: Parameter-destructured form (CC <2.1.87)
+  // Find the Text component function definition from Ink
+  // The minified Text component has this signature:
   // function X({color:A,backgroundColor:B,dimColor:C=!1,bold:D=!1,...})
-  const paramPattern =
-    /\bfunction ([$\w]+).{0,20}color:[$\w]+,backgroundColor:[$\w]+,dimColor:[$\w]+(?:=![01])?,bold:[$\w]+(?:=![01])?/;
-  const paramMatch = fileContents.match(paramPattern);
-  if (paramMatch) return paramMatch[1];
-
-  // Method 2: Body-destructured form (CC 2.1.87+ with React compiler)
-  // function v(H){let $=CACHE.c(N),{color:q,backgroundColor:K,dimColor:_,bold:f,...}=H
-  const bodyPattern =
-    /function ([$\w]+)\([$\w]+\)\{let [$\w]+=[$\w]+\.c\(\d+\),\{color:[$\w]+,backgroundColor:[$\w]+,dimColor/;
-  const bodyMatch = fileContents.match(bodyPattern);
-  if (bodyMatch) return bodyMatch[1];
-
-  console.error('patch: findTextComponent: failed to find text component');
-  return undefined;
+  const textComponentPattern =
+    /\bfunction ([$\w]+).{0,30}color:[$\w]+,backgroundColor:[$\w]+,dimColor:[$\w]+(?:=![01])?,bold:[$\w]+(?:=![01])?/;
+  const match = fileContents.match(textComponentPattern);
+  if (!match) {
+    console.log('patch: findTextComponent: failed to find text component');
+    return undefined;
+  }
+  return match[1];
 };
 
 /**
  * Find the Box component variable name
  */
-/**
- * Inject code after the Bun CommonJS wrapper header instead of prepending before it.
- * The Bun header looks like: // @bun @bytecode @bun-cjs\n(function(exports, require, module, __filename, __dirname) {
- * Returns the modified file, or null if injection failed.
- */
-export const injectAfterBunHeader = (
-  fileContents: string,
-  codeToInject: string
-): string | null => {
-  const BUN_CJS_MARKER =
-    '(function(exports, require, module, __filename, __dirname) {';
-  const markerIdx = fileContents.indexOf(BUN_CJS_MARKER);
-  if (markerIdx !== -1) {
-    const insertPoint = markerIdx + BUN_CJS_MARKER.length;
-    return (
-      fileContents.slice(0, insertPoint) +
-      '\n' +
-      codeToInject +
-      fileContents.slice(insertPoint)
-    );
-  }
-  // Non-Bun bundle: prepend
-  return codeToInject + '\n' + fileContents;
-};
-
 export const findBoxComponent = (fileContents: string): string | undefined => {
   // Method 1: Find Box by ink-box createElement with local variable (CC ~2.0.x)
   const inkBoxPattern =
-    /function ([$\w]+)\(.{0,2000}[^$\w]([$\w]+)=[$\w]+(?:\.default)?\.createElement\("ink-box".{0,200}?return \2/;
+    /function ([$\w]+)\(.{0,2000}[^$\w]([$\w]+)=[$\w]+(?:\.default)?\.createElement\("ink-box".{0,300}?return \2/;
   const inkBoxMatch = fileContents.match(inkBoxPattern);
   if (inkBoxMatch) {
     return inkBoxMatch[1];
@@ -370,21 +340,15 @@ export const findBoxComponent = (fileContents: string): string | undefined => {
     return boxDisplayNameMatch[1];
   }
 
-  // Method 4: Body-destructured wrapper with borderColor (CC 2.1.87+)
-  // function Fy4(H){...{borderColor:_,...,children:Y,...}=H...createElement("ink-box"...}
-  // Then: ;m=Fy4}
-  const borderBoxPattern =
-    /function ([$\w]+)\([$\w]+\)\{let [$\w]+=[$\w]+\.c\(\d+\).{0,200}borderColor:[$\w]+,borderTopColor/;
-  const borderBoxMatch = fileContents.match(borderBoxPattern);
-  if (borderBoxMatch) {
-    const fnName = borderBoxMatch[1];
-    // Find the variable alias: ;VAR=fnName}
-    const assignPattern = new RegExp(
-      `;([$\\w]+)=${fnName.replace(/\$/g, '\\$')}\\}`
-    );
-    const assignMatch = fileContents.match(assignPattern);
-    if (assignMatch) return assignMatch[1];
-    return fnName;
+  // Method 4: Find Box by function that uses O6(N) or obj.c(N) memo and creates "ink-box" (CC 2.1.83+)
+  // NPM minification: function NAME(A){let q=O6(44),...createElement("ink-box",...}
+  // Native minification: function NAME(A){let q=obj.c(44),...createElement("ink-box",...}
+  // The memo cache size (N) changes across versions (42 in 2.1.83, 44 in 2.1.89, etc.)
+  const memoBoxPattern =
+    /function ([$\w]+)\([$\w]+\)\{let [$\w]+=[$\w]+(?:\.[$\w]+)?\(\d+\).{0,3000}createElement\("ink-box"/;
+  const memoBoxMatch = fileContents.match(memoBoxPattern);
+  if (memoBoxMatch) {
+    return memoBoxMatch[1];
   }
 
   console.error(

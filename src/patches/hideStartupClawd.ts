@@ -3,76 +3,74 @@
 import { showDiff } from './index';
 
 /**
- * Find all Clawd component function body start indices.
+ * Find the Clawd wrapper component function body start index.
+ *
+ * The Clawd rendering has two layers:
+ * - Inner component (e.g., MKz): renders Apple_Terminal Clawd
+ * - Wrapper component (e.g., cE6): renders MKz on Apple or ASCII art otherwise
+ *
+ * We target the WRAPPER to avoid layout issues from nulling just the inner.
  *
  * Steps:
- * 1. Find ALL occurrences of '▛███▜' (the Clawd ASCII art header)
- * 2. For each occurrence:
- *    a. Get 2000 chars previous
- *    b. Find the LAST /function [$\w]+\(\)\{/ in that subsection
- *    c. Get the index after the `{`
- *    d. Add that to a list of indices
- * 3. Return all gotten indices
+ * 1. Find the inner component by looking for '▛███▜' (Clawd ASCII art)
+ * 2. Trace back to find the inner function name
+ * 3. Find the wrapper function that createElement's the inner component
+ * 4. Return the wrapper function body start index
  */
 const findStartupClawdComponents = (oldFile: string): number[] => {
   const indices: number[] = [];
 
-  // Method 1 (CC <2.1.87): Clawd ASCII art is inline in function bodies
   const clawdPattern = /▛███▜|\\u259B\\u2588\\u2588\\u2588\\u259C/gi;
 
-  let clawdMatch: RegExpExecArray | null;
-  while ((clawdMatch = clawdPattern.exec(oldFile)) !== null) {
-    const clawdIndex = clawdMatch.index;
-    const lookbackStart = Math.max(0, clawdIndex - 2000);
-    const beforeText = oldFile.slice(lookbackStart, clawdIndex);
+  // Find the inner component function name
+  const clawdMatch = clawdPattern.exec(oldFile);
+  if (!clawdMatch) return indices;
 
-    // Only match zero-arg functions (component renderers), not data objects
-    const functionPattern = /function [$\w]+\(\)\{/g;
-    let lastFunctionMatch: RegExpExecArray | null = null;
-    let match: RegExpExecArray | null;
+  const clawdIndex = clawdMatch.index;
+  const lookbackStart = Math.max(0, clawdIndex - 2000);
+  const beforeText = oldFile.slice(lookbackStart, clawdIndex);
 
-    while ((match = functionPattern.exec(beforeText)) !== null) {
-      lastFunctionMatch = match;
-    }
-
-    if (lastFunctionMatch) {
-      const absoluteIndex =
-        lookbackStart + lastFunctionMatch.index + lastFunctionMatch[0].length;
-      indices.push(absoluteIndex);
-    }
-    // If no function found, the art may be in a data object (CC 2.1.87+) — method 2 handles it
+  const functionPattern = /function ([$\w]+)\([^)]*\)\{/g;
+  let lastFunctionMatch: RegExpExecArray | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = functionPattern.exec(beforeText)) !== null) {
+    lastFunctionMatch = match;
   }
 
-  if (indices.length > 0) return indices;
-
-  // Method 2 (CC 2.1.87+): Clawd art is in a data object, rendered by
-  // functions that use color:"clawd_body". Find those rendering functions.
-  const clawdBodyPattern =
-    /function ([$\w]+)\([$\w]+\)\{.{0,500}color:"clawd_body"/g;
-  const seen = new Set<string>();
-
-  let bodyMatch: RegExpExecArray | null;
-  while ((bodyMatch = clawdBodyPattern.exec(oldFile)) !== null) {
-    const fnName = bodyMatch[1];
-    if (seen.has(fnName)) continue;
-    seen.add(fnName);
-
-    // Find the opening brace of the function body
-    const bodyStart = bodyMatch.index + bodyMatch[0].indexOf('{') + 1;
-    indices.push(bodyStart);
+  if (!lastFunctionMatch) {
+    console.error(
+      `patch: hideStartupClawd: failed to find inner Clawd function`
+    );
+    return indices;
   }
 
-  // Also find the parent component that delegates to the clawd_body renderers
-  // Pattern: function X(H){...DATA[...]...createElement(...{pose:...})...clawd_body
-  const parentPattern =
-    /function ([$\w]+)\([$\w]+\)\{.{0,400}[$\w]+\[\w+\]\[.{0,400}color:"clawd_body"/g;
-  while ((bodyMatch = parentPattern.exec(oldFile)) !== null) {
-    const fnName = bodyMatch[1];
-    if (seen.has(fnName)) continue;
-    seen.add(fnName);
+  const innerFuncName = lastFunctionMatch[1];
 
-    const bodyStart = bodyMatch.index + bodyMatch[0].indexOf('{') + 1;
-    indices.push(bodyStart);
+  // Find the wrapper function that directly createElement's the inner component.
+  // Iterate all functions and find one where createElement(INNER,) appears
+  // before any nested function definition.
+  const wrapperFuncPattern = /function ([$\w]+)\([^)]*\)\{/g;
+  let wrapperExec: RegExpExecArray | null;
+  let wrapperMatch: { index: number; length: number } | null = null;
+  while ((wrapperExec = wrapperFuncPattern.exec(oldFile)) !== null) {
+    const bodyStart = wrapperExec.index + wrapperExec[0].length;
+    const body = oldFile.slice(bodyStart, bodyStart + 500);
+    const elemIdx = body.indexOf(`createElement(${innerFuncName},`);
+    if (elemIdx === -1) continue;
+    const nextFuncIdx = body.indexOf('function ');
+    if (nextFuncIdx !== -1 && nextFuncIdx < elemIdx) continue;
+    wrapperMatch = { index: wrapperExec.index, length: wrapperExec[0].length };
+    break;
+  }
+
+  if (wrapperMatch) {
+    const absoluteIndex = wrapperMatch.index + wrapperMatch.length;
+    indices.push(absoluteIndex);
+  } else {
+    // Fallback: target the inner function directly (old behavior)
+    const absoluteIndex =
+      lookbackStart + lastFunctionMatch.index + lastFunctionMatch[0].length;
+    indices.push(absoluteIndex);
   }
 
   return indices;

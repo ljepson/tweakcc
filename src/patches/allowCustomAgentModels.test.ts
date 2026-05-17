@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { writeAllowCustomAgentModels } from './allowCustomAgentModels';
 
 // CC 2.1.69 style - realistic mock based on actual extracted JS
@@ -63,12 +63,6 @@ const mockOnlyValidation =
   ';let _=E&&typeof E==="string"&&oEH.includes(E);' +
   'return{...obj,..._?{model:E}:{}}';
 
-// CC 2.1.89 agent tool schema style
-const mockAgentToolSchema =
-  'subagent_type:y.string().optional().describe("The type of specialized agent to use for this task"),' +
-  'model:y.enum(["sonnet","opus","haiku"]).optional().describe("Optional model override for this agent. Takes precedence over the agent definition\'s model frontmatter. If omitted, uses the agent definition\'s model, or inherits from the parent."),' +
-  'run_in_background:y.boolean().optional().describe("Set to true to run this agent in the background.")';
-
 describe('allowCustomAgentModels', () => {
   describe('writeAllowCustomAgentModels', () => {
     it('should replace Zod enum with string (CC 2.1.69)', () => {
@@ -112,17 +106,13 @@ describe('allowCustomAgentModels', () => {
     });
 
     it('should return null when only Zod pattern found', () => {
-      vi.spyOn(console, 'error').mockImplementation(() => {});
       const result = writeAllowCustomAgentModels(mockOnlyZod);
       expect(result).toBeNull();
-      vi.restoreAllMocks();
     });
 
     it('should return null when only validation pattern found', () => {
-      vi.spyOn(console, 'error').mockImplementation(() => {});
       const result = writeAllowCustomAgentModels(mockOnlyValidation);
       expect(result).toBeNull();
-      vi.restoreAllMocks();
     });
 
     it('should not match a false positive with different array variable', () => {
@@ -134,13 +124,6 @@ describe('allowCustomAgentModels', () => {
       expect(result).not.toContain('oEH.includes(K)');
       // Zod pattern must also be modified
       expect(result).toContain('model:u.string().optional()');
-    });
-
-    it('should replace agent tool model enum with string on CC 2.1.89+', () => {
-      const result = writeAllowCustomAgentModels(mockAgentToolSchema);
-      expect(result).not.toBeNull();
-      expect(result).toContain('model:y.string().optional()');
-      expect(result).not.toContain('enum(["sonnet","opus","haiku"])');
     });
   });
 });

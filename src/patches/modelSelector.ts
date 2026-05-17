@@ -1,6 +1,6 @@
 // Please see the note about writing patches in ./index
 
-import { escapeIdent, showDiff } from './index';
+import { showDiff } from './index';
 
 // Models to inject/make available.
 // prettier-ignore
@@ -9,7 +9,7 @@ export const CUSTOM_MODELS: { value: string; label: string; description: string 
   { value: 'claude-sonnet-4-6',            label: 'Sonnet 4.6',           description: "Claude Sonnet 4.6 (February 2026)" },
   { value: 'claude-haiku-4-5-20251001',    label: 'Haiku 4.5',            description: "Claude Haiku 4.5 (October 2025)" },
   { value: 'claude-opus-4-5-20251101',     label: 'Opus 4.5',             description: "Claude Opus 4.5 (November 2025)" },
-  { value: 'claude-sonnet-4-5-20250929',   label: 'Sonnet 4.5',          description: "Claude Sonnet 4.5 (September 2025)" },
+  { value: 'claude-sonnet-4-5-20250929',   label: 'Sonnet 4.5',           description: "Claude Sonnet 4.5 (September 2025)" },
   { value: 'claude-opus-4-1-20250805',     label: 'Opus 4.1',             description: "Claude Opus 4.1 (August 2025)" },
   { value: 'claude-opus-4-20250514',      label: 'Opus 4',               description: "Claude Opus 4 (May 2025)" },
   { value: 'claude-sonnet-4-20250514',    label: 'Sonnet 4',             description: "Claude Sonnet 4 (May 2025)" },
@@ -21,50 +21,63 @@ export const CUSTOM_MODELS: { value: string; label: string; description: string 
   { value: 'claude-3-opus-20240229',      label: 'Opus 3',               description: "Claude 3 Opus (February 2024)" },
 ];
 
+// Idempotency check - if our models are already present, skip
+const alreadyPatched = (fileContents: string): boolean => {
+  return CUSTOM_MODELS.some(m => fileContents.includes(`value:"${m.value}"`));
+};
+
 const findCustomModelListInsertionPoint = (
   fileContents: string
 ): { insertionIndex: number; modelListVar: string } | null => {
-  // 1. Find the custom model push pattern
-  const pushPattern =
-    / ([$\w]+)\.push\(\{value:[$\w]+,label:[$\w]+,description:"Custom model"\}\)/;
-  const pushMatch = fileContents.match(pushPattern);
-  if (!pushMatch || pushMatch.index === undefined) {
+  // Check idempotency
+  if (alreadyPatched(fileContents)) {
+    return { insertionIndex: -1, modelListVar: '$' };
+  }
+
+  // Find function LoH which contains the model list building
+  // The function signature is: function LoH(H=!1){let $=fw5(H),...
+  const funcLoHMatch = fileContents.match(/function LoH\(H=!\d\)\{/);
+  if (!funcLoHMatch || funcLoHMatch.index === undefined) {
     console.error(
-      'patch: findCustomModelListInsertionPoint: failed to find custom model push'
+      'patch: findCustomModelListInsertionPoint: failed to find function LoH'
     );
     return null;
   }
 
-  // 2. Extract the model list variable name
-  const modelListVar = pushMatch[1];
+  const funcStart = funcLoHMatch.index + funcLoHMatch[0].length;
+  // Find the end of function LoH by finding the next function or module boundary
+  const afterFunc = fileContents.slice(funcStart, funcStart + 5000);
+  const nextFuncMatch = afterFunc.match(/function [$\w]+\(/);
+  const funcEnd =
+    nextFuncMatch && nextFuncMatch.index !== undefined
+      ? funcStart + nextFuncMatch.index
+      : funcStart + afterFunc.length;
 
-  // The declaration/function head can move farther from the push site across CC builds
-  // and when other patches expand this block, so keep a wider lookback window.
-  const searchStart = Math.max(0, pushMatch.index - 1500);
-  const chunk = fileContents.slice(searchStart, pushMatch.index);
+  // The model list variable is $ which is declared as let $=fw5(H)
+  // We insert after the last $.push() statement in the function
+  const funcBody = fileContents.slice(funcStart, funcEnd);
 
-  // Declaration can be emitted as let/var/const depending on minifier output.
-  const declPattern = `(?:let|var|const) ${escapeIdent(modelListVar)}=.+?;`;
-  const funcPattern = new RegExp(
-    `function [$\\w]+\\([^)]*\\)\\{${declPattern}`,
-    'g'
-  );
-  let lastMatch: RegExpExecArray | null = null;
-  let match: RegExpExecArray | null;
-  while ((match = funcPattern.exec(chunk)) !== null) {
-    lastMatch = match;
-  }
-
-  if (!lastMatch) {
+  // Find the last $.push( in the function body
+  const lastPushIdx = funcBody.lastIndexOf('$.push(');
+  if (lastPushIdx === -1) {
     console.error(
-      `patch: findCustomModelListInsertionPoint: failed to find function with ${modelListVar}`
+      'patch: findCustomModelListInsertionPoint: failed to find $.push in function'
     );
     return null;
   }
 
-  // 5. Return index after the semicolon (end of the match), and the var name
-  const insertionIndex = searchStart + lastMatch.index + lastMatch[0].length;
-  return { insertionIndex, modelListVar };
+  // Find the semicolon after the push to get the end of the statement
+  const afterPush = funcBody.slice(lastPushIdx);
+  const semicolonIdx = afterPush.indexOf(';');
+  if (semicolonIdx === -1) {
+    console.error(
+      'patch: findCustomModelListInsertionPoint: failed to find semicolon after push'
+    );
+    return null;
+  }
+
+  const insertionIndex = funcStart + lastPushIdx + semicolonIdx + 1;
+  return { insertionIndex, modelListVar: '$' };
 };
 
 export const writeModelCustomizations = (oldFile: string): string | null => {
@@ -74,6 +87,11 @@ export const writeModelCustomizations = (oldFile: string): string | null => {
 
   const found = findCustomModelListInsertionPoint(oldFile);
   if (!found) return null;
+
+  // Idempotency: if insertionIndex is -1, models are already present
+  if (found.insertionIndex === -1) {
+    return oldFile;
+  }
 
   const { insertionIndex, modelListVar } = found;
 
